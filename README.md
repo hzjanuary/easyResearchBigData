@@ -145,7 +145,7 @@ Key settings in `config.py`:
 ## Hardware Requirements
 
 - **GPU:** NVIDIA RTX 3050 (4 GB VRAM) or better
-- **CPU:** Any multi-core processor (optimised for Huananzhi B760)
+- **CPU:** Any multi-core processor
 - **RAM:** 16 GB recommended
 - **Storage:** Depends on dataset size
 
