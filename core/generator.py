@@ -1,21 +1,3 @@
-"""
-easyResearch for Big Data — Advanced RAG Generator
-=====================================================
-Hybrid Search pipeline adapted from easyResearch's generator.py:
-
-    Question → Smart Contextualization → Vector Search (MMR)
-                                              ↓
-                                        BM25 Scoring
-                                              ↓
-                                  Cross-Encoder Reranking
-                                              ↓
-                   Hybrid Score (0.7×Rerank + 0.3×BM25)
-                                              ↓
-                     Parent Document Retrieval → LLM Answer
-
-Supports: Groq (LLaMA 3.3 70B) and Google Gemini.
-Metadata pre-filtering for format / source before vector search.
-"""
 
 from __future__ import annotations
 
@@ -46,13 +28,8 @@ from config import (
 
 load_dotenv()
 
-# ── Reranker ────────────────────────────────────────────────────────────────
 reranker_model = CrossEncoder(RERANKER_MODEL, device=DEVICE)
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-#  PROMPTS
-# ═══════════════════════════════════════════════════════════════════════════
 
 contextualize_q_system_prompt = (
     "You are a question reformulation expert. Reformulate the user's latest "
@@ -104,10 +81,6 @@ rag_prompt_no_history = ChatPromptTemplate.from_messages([
 ])
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  HELPERS
-# ═══════════════════════════════════════════════════════════════════════════
-
 def _tokenize(text: str) -> list[str]:
     return re.findall(r"\w+", text.lower())
 
@@ -128,7 +101,6 @@ def _summarize_conversation(
 
 
 def _needs_contextualization(question: str) -> bool:
-    """Check if the question contains pronouns or follow-up markers."""
     patterns = [
         r"\b(it|its|this|that|these|those|they|them|their|he|she|him|her)\b",
         r"\b(the same|above|previous|mentioned|said|such)\b",
@@ -142,7 +114,6 @@ def _needs_contextualization(question: str) -> bool:
 
 
 def _bm25_search(documents: list, query: str, top_k: int = 10) -> list:
-    """BM25 keyword scoring over pre-retrieved documents."""
     if not documents:
         return []
     corpus = [_tokenize(doc.page_content) for doc in documents]
@@ -152,10 +123,6 @@ def _bm25_search(documents: list, query: str, top_k: int = 10) -> list:
         doc.metadata["bm25_score"] = float(scores[i])
     return sorted(documents, key=lambda x: x.metadata["bm25_score"], reverse=True)[:top_k]
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-#  MAIN RAG FUNCTION
-# ═══════════════════════════════════════════════════════════════════════════
 
 def query_rag_system(
     question: str,
@@ -168,13 +135,7 @@ def query_rag_system(
     format_filter: str | None = None,
     source_filter: str | None = None,
 ) -> dict[str, Any]:
-    """
-    Hybrid RAG Pipeline:
-      Vector Search + BM25 → Cross-Encoder Reranking → Parent Doc → LLM
-    With optional metadata pre-filtering on format / source.
-    """
 
-    # ── 1. LLM initialisation ──────────────────────────────────────────
     if llm_provider == "gemini":
         sys_key = os.getenv("GOOGLE_API_KEY")
         key = user_api_key if user_api_key and user_api_key.strip() else sys_key
@@ -204,7 +165,7 @@ def query_rag_system(
         except Exception as e:
             return {"answer": f"❌ LLM init error: {e}", "sources": []}
 
-    # ── 2. Contextualisation ────────────────────────────────────────────
+
     standalone_question = question
     has_history = chat_history and len(chat_history) > 1
     need_context = has_history and _needs_contextualization(question)
@@ -227,14 +188,12 @@ def query_rag_system(
         except Exception as e:
             print(f"⚠️ Contextualization failed: {e}")
 
-    # ── 3. Connect to ChromaDB ──────────────────────────────────────────
     db = Chroma(
         collection_name=collection_name,
         persist_directory=CHROMA_DIR,
         embedding_function=embedding_model,
     )
 
-    # ── 4. Metadata pre-filter  (Big Data feature) ─────────────────────
     where_filter: dict | None = None
     conditions: list[dict] = []
     if format_filter:
@@ -246,7 +205,7 @@ def query_rag_system(
     elif len(conditions) > 1:
         where_filter = {"$and": conditions}
 
-    # ── 5. Vector search ────────────────────────────────────────────────
+
     if where_filter:
         all_docs = db.similarity_search(
             standalone_question,
@@ -268,7 +227,7 @@ def query_rag_system(
             "pipeline_info": {"retrieval": "no_docs_found"},
         }
 
-    # ── 6. BM25 scoring (hybrid component) ─────────────────────────────
+
     bm25_ranked = _bm25_search(all_docs.copy(), standalone_question, top_k=len(all_docs))
     bm25_scores = {
         hash(d.page_content[:100]): d.metadata.get("bm25_score", 0)
@@ -280,7 +239,7 @@ def query_rag_system(
         raw = bm25_scores.get(h, 0)
         doc.metadata["bm25_score"] = raw / max_bm25 if max_bm25 > 0 else 0
 
-    # ── 7. Cross-Encoder reranking ──────────────────────────────────────
+
     pairs = [[standalone_question, doc.page_content] for doc in all_docs]
     rerank_scores = reranker_model.predict(pairs)
 
@@ -310,7 +269,6 @@ def query_rag_system(
             "pipeline_info": {"retrieval": "no_relevant_docs"},
         }
 
-    # ── 8. Generate answer (using parent content for richer context) ────
     context_text = "\n\n---\n\n".join([
         f"[Source: {d.metadata.get('source', 'Unknown')}]\n"
         f"{d.metadata.get('parent_content', d.page_content)}"

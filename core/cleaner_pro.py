@@ -1,18 +1,3 @@
-"""
-easyResearch for Big Data — Advanced Cleaner (cleaner_pro)
-============================================================
-Inspired by EpsteinFiles-RAG's cleaning stage but generalised to handle
-PDF, TXT, DOCX, and code files from an arbitrary directory or upload.
-
-Key features
-------------
-* **Multiprocessing** via ProcessPoolExecutor → saturates all B760 cores.
-* **Rich metadata extraction** (file path, modification date, format, page
-  count, size) preserved through the pipeline into ChromaDB for fast
-  pre-vector metadata filtering.
-* Header / footer / boilerplate removal for PDFs.
-* Encoding-safe TXT reader with multiple fallbacks.
-"""
 
 from __future__ import annotations
 
@@ -34,12 +19,8 @@ from config import (
 
 log = logging.getLogger(__name__)
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  Per-format extractors  (each runs in its own worker process)
-# ═══════════════════════════════════════════════════════════════════════════
 
 def _extract_pdf(path: Path) -> tuple[str, dict]:
-    """Extract text + page-level metadata from a PDF using pypdf."""
     from pypdf import PdfReader
 
     reader = PdfReader(str(path))
@@ -53,7 +34,6 @@ def _extract_pdf(path: Path) -> tuple[str, dict]:
 
 
 def _extract_txt(path: Path) -> tuple[str, dict]:
-    """Read a plain-text file with encoding fallback."""
     for enc in ("utf-8", "latin-1", "cp1252"):
         try:
             return path.read_text(encoding=enc), {}
@@ -63,7 +43,6 @@ def _extract_txt(path: Path) -> tuple[str, dict]:
 
 
 def _extract_docx(path: Path) -> tuple[str, dict]:
-    """Extract text from a DOCX using docx2txt."""
     import docx2txt
 
     text = docx2txt.process(str(path))
@@ -71,7 +50,6 @@ def _extract_docx(path: Path) -> tuple[str, dict]:
 
 
 def _extract_code(path: Path) -> tuple[str, dict]:
-    """Read source code files as plain text."""
     return _extract_txt(path)[0], {"language": path.suffix.lstrip(".")}
 
 
@@ -86,11 +64,6 @@ _EXTRACTORS: dict[str, Callable] = {
 }
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  Text normalisation  (mirrors EpsteinFiles-RAG clean_text plus extras)
-# ═══════════════════════════════════════════════════════════════════════════
-
-# Common PDF header/footer patterns to strip
 _HEADER_FOOTER_RE = re.compile(
     r"(?m)^(Page \d+ of \d+|Confidential|DRAFT|©.*|All rights reserved\.?)$",
     re.IGNORECASE,
@@ -98,31 +71,18 @@ _HEADER_FOOTER_RE = re.compile(
 
 
 def clean_text(text: str) -> str:
-    """
-    Normalise whitespace, remove common boilerplate headers/footers,
-    and collapse excessive blank lines — mirrors the EpsteinFiles approach
-    but with extra heuristics for real-world documents.
-    """
-    text = _HEADER_FOOTER_RE.sub("", text)          # strip headers/footers
-    text = re.sub(r"\n{3,}", "\n\n", text)           # max 2 linebreaks
-    text = re.sub(r"[ \t]+", " ", text)               # collapse horiz space
-    text = re.sub(r"[^\S\n]+\n", "\n", text)          # trailing space before \n
-    text = re.sub(r"\f", "\n\n", text)                 # form-feeds → paragraph
+    text = _HEADER_FOOTER_RE.sub("", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"[^\S\n]+\n", "\n", text)
+    text = re.sub(r"\f", "\n\n", text)
     return text.strip()
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-#  Worker function  (executed in a child process)
-# ═══════════════════════════════════════════════════════════════════════════
 
 def _process_single_file(
     file_path_str: str,
     base_dir_str: str,
 ) -> dict[str, Any] | None:
-    """
-    Extract, clean, and return a document dict with rich metadata.
-    Returns ``None`` when the file is too short or unreadable.
-    """
     path = Path(file_path_str)
     base = Path(base_dir_str)
     ext = path.suffix.lower()
@@ -161,12 +121,7 @@ def _process_single_file(
     return doc
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  Public API
-# ═══════════════════════════════════════════════════════════════════════════
-
 def discover_files(source_dir: Path) -> list[Path]:
-    """Recursively find all supported documents under *source_dir*."""
     files = [
         p for p in source_dir.rglob("*")
         if p.suffix.lower() in SUPPORTED_EXTENSIONS and p.is_file()
@@ -181,23 +136,6 @@ def clean_documents(
     max_workers: int | None = None,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> list[dict[str, Any]]:
-    """
-    Main entry-point: Discover → Extract → Clean.
-
-    Parameters
-    ----------
-    source_dir : Path
-        Folder containing raw documents.
-    max_workers : int, optional
-        Override the default process-pool size.
-    progress_callback : callable, optional
-        ``callback(done, total)`` invoked after each file is processed.
-
-    Returns
-    -------
-    list[dict]
-        The cleaned document records.
-    """
     files = discover_files(source_dir)
     if not files:
         log.warning("No documents found — nothing to clean.")

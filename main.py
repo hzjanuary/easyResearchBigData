@@ -1,13 +1,3 @@
-"""
-easyResearch for Big Data — FastAPI REST API
-=============================================
-Endpoints:
-  POST /ask         — query the RAG pipeline
-  POST /upload      — upload & embed a document
-  GET  /notebooks   — list all workspaces
-  GET  /stats/{nb}  — workspace stats
-"""
-
 import os, shutil, tempfile
 from pathlib import Path
 
@@ -27,7 +17,7 @@ from core.generator import query_rag_system
 from core.summarizer import generate_notebook_summary
 from config import UPLOAD_DIR
 
-# ── App ──────────────────────────────────────────────────────────────────
+
 app = FastAPI(
     title="easyResearch for Big Data",
     version="2.0.0",
@@ -42,7 +32,6 @@ app.add_middleware(
 )
 
 
-# ── Models ───────────────────────────────────────────────────────────────
 class AskRequest(BaseModel):
     question: str
     collection_name: str = "Default_Project"
@@ -67,11 +56,9 @@ class UploadResponse(BaseModel):
     collection: str
 
 
-# ── Endpoints ────────────────────────────────────────────────────────────
 
 @app.post("/ask", response_model=AskResponse)
 async def ask(req: AskRequest):
-    """Query the hybrid RAG pipeline."""
     try:
         result = query_rag_system(
             req.question,
@@ -98,7 +85,6 @@ async def upload(
     file: UploadFile = File(...),
     collection_name: str = Form("Default_Project"),
 ):
-    """Upload and embed a single document."""
     suffix = Path(file.filename).suffix
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir=str(UPLOAD_DIR)) as tmp:
         content = await file.read()
@@ -122,20 +108,17 @@ async def upload(
 
 @app.get("/notebooks")
 async def list_notebooks():
-    """List all workspaces."""
     notebooks = get_all_notebooks()
     return {"notebooks": notebooks, "count": len(notebooks)}
 
 
 @app.get("/stats/{collection_name}")
 async def stats(collection_name: str):
-    """Get workspace statistics."""
     return get_notebook_stats(collection_name)
 
 
 @app.delete("/notebooks/{collection_name}")
 async def remove_notebook(collection_name: str):
-    """Delete a workspace."""
     success = delete_notebook(collection_name)
     if not success:
         raise HTTPException(status_code=404, detail="Notebook not found")
@@ -152,7 +135,6 @@ async def health():
     }
 
 
-# ── Entry point ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

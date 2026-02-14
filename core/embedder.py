@@ -1,13 +1,3 @@
-"""
-easyResearch for Big Data — Embedder & ChromaDB Management
-=============================================================
-Adapted from easyResearch's embedder.py.
-
-Key changes for Big Data / RTX 3050:
-* BATCH_SIZE = 32 with ``torch.cuda.empty_cache()`` after each batch.
-* Multilingual embedding model (paraphrase-multilingual-MiniLM-L12-v2).
-* Notebook (collection) management: stats, delete, list.
-"""
 
 from __future__ import annotations
 
@@ -24,10 +14,6 @@ from langchain_huggingface import HuggingFaceEmbeddings
 
 from config import CHROMA_DIR, DEVICE, EMBEDDING_MODEL, EMBED_BATCH_SIZE
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  Global embedding model (loaded once, reused everywhere)
-# ═══════════════════════════════════════════════════════════════════════════
-
 print(f"🚀 easyResearch running on device: {DEVICE.upper()}")
 
 embedding_model = HuggingFaceEmbeddings(
@@ -37,20 +23,12 @@ embedding_model = HuggingFaceEmbeddings(
 )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  Add chunks → ChromaDB  (VRAM-safe batching)
-# ═══════════════════════════════════════════════════════════════════════════
-
 def add_to_vector_db(
     chunks,
     collection_name: str = "default_notebook",
     batch_size: int | None = None,
     progress_callback=None,
 ):
-    """
-    Insert LangChain Document chunks into a ChromaDB collection.
-    Uses small batches + ``torch.cuda.empty_cache()`` to stay within 4 GB VRAM.
-    """
     db = Chroma(
         collection_name=collection_name,
         embedding_function=embedding_model,
@@ -74,7 +52,7 @@ def add_to_vector_db(
             ids=ids[i:end],
         )
 
-        # ── VRAM cleanup (critical for RTX 3050 4 GB) ──────────────
+
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         gc.collect()
@@ -87,7 +65,6 @@ def add_to_vector_db(
 
 
 def get_retriever(collection_name: str = "default_notebook", k: int = 5, fetch_k: int = 20):
-    """Return an MMR retriever for a given collection."""
     db = Chroma(
         collection_name=collection_name,
         embedding_function=embedding_model,
@@ -99,12 +76,7 @@ def get_retriever(collection_name: str = "default_notebook", k: int = 5, fetch_k
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  Notebook management
-# ═══════════════════════════════════════════════════════════════════════════
-
 def get_notebook_stats(notebook_name: str) -> dict:
-    """Chunk count, source files, and disk size for a notebook collection."""
     stats = {"chunks": 0, "files": [], "size_mb": 0.0}
     try:
         if not os.path.exists(CHROMA_DIR):
@@ -148,7 +120,6 @@ def get_notebook_stats(notebook_name: str) -> dict:
 
 
 def get_total_db_size() -> float:
-    """Total database size in MB."""
     try:
         if not os.path.exists(CHROMA_DIR):
             return 0.0
@@ -163,7 +134,6 @@ def get_total_db_size() -> float:
 
 
 def get_all_notebooks() -> list[str]:
-    """List every collection (notebook) in the DB."""
     try:
         if not os.path.exists(CHROMA_DIR):
             return []
@@ -175,7 +145,6 @@ def get_all_notebooks() -> list[str]:
 
 
 def delete_file_from_notebook(notebook_name: str, source_name: str) -> int:
-    """Delete all chunks belonging to *source_name* from a collection."""
     try:
         client = chromadb.PersistentClient(path=CHROMA_DIR)
         collection = client.get_collection(notebook_name)
@@ -197,7 +166,6 @@ def delete_file_from_notebook(notebook_name: str, source_name: str) -> int:
 
 
 def delete_notebook(notebook_name: str) -> bool:
-    """Completely remove a notebook — data + physical folder."""
     try:
         client = chromadb.PersistentClient(path=CHROMA_DIR)
         target = None

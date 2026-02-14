@@ -1,22 +1,3 @@
-"""
-easyResearch for Big Data — Ingestion Worker  (Big Data Engine)
-================================================================
-Full pipeline:  Clean → Chunk → Embed → Store
-
-Design goals (merged from EpsteinFiles-RAG + easyResearch):
-──────────────────────────────────────────────────────────────
-1. **Flexible** – accepts any folder of PDF / TXT / DOCX / code files.
-2. **RTX 3050 safe** – batch embedding (size 32) with explicit
-   ``torch.cuda.empty_cache()`` between batches so 4 GB VRAM is never exceeded.
-3. **Multiprocessing** – CPU-bound Clean & Chunk phases use all B760 cores
-   via ``ProcessPoolExecutor``.
-4. **Metadata-rich** – file path, date, format, page count survive into
-   ChromaDB for pre-vector metadata filters.
-5. **Async-friendly** – ``run_pipeline_async()`` runs in a daemon thread so
-   the Streamlit UI stays responsive during large-scale processing.
-6. **UI-tuneable** – chunk_size / overlap can be overridden per run.
-"""
-
 from __future__ import annotations
 
 import gc
@@ -41,7 +22,6 @@ from config import (
     UPLOAD_DIR,
 )
 
-# ── Logging ─────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(message)s",
@@ -53,13 +33,7 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  Progress state  (read by Streamlit in the main thread)
-# ═══════════════════════════════════════════════════════════════════════════
-
 class PipelineStatus:
-    """Thread-safe mutable status consumed by the Streamlit UI."""
-
     def __init__(self) -> None:
         self.stage: str = "idle"          # idle|cleaning|chunking|embedding|done|error
         self.progress: float = 0.0        # 0.0 – 1.0
@@ -77,13 +51,9 @@ class PipelineStatus:
         )}
 
 
-# Module-level singleton
 pipeline_status = PipelineStatus()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  Stage 1 — CLEAN  (multiprocessing via cleaner_pro.py)
-# ═══════════════════════════════════════════════════════════════════════════
 
 def _stage_clean(source_dir: Path) -> list[dict[str, Any]]:
     from core.cleaner_pro import clean_documents
@@ -102,12 +72,7 @@ def _stage_clean(source_dir: Path) -> list[dict[str, Any]]:
     return docs
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  Stage 2 — CHUNK  (CPU-bound, multiprocessing)
-# ═══════════════════════════════════════════════════════════════════════════
-
 def _chunk_single_doc(args: tuple) -> list[dict[str, Any]]:
-    """Chunk one document dict. Runs inside a worker process."""
     doc, chunk_size, chunk_overlap = args
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
@@ -170,10 +135,6 @@ def _stage_chunk(
     return unique
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  Stage 3 — EMBED  (GPU-bound, careful with 4 GB VRAM)
-# ═══════════════════════════════════════════════════════════════════════════
-
 def _stage_embed(
     chunks: list[dict[str, Any]],
     collection_name: str,
@@ -190,7 +151,6 @@ def _stage_embed(
              len(chunks), DEV, BS)
 
     if reset_db and Path(CHROMA_DIR).exists():
-        # Only reset the specific collection if possible, else full reset
         log.info("  Resetting Chroma DB …")
         shutil.rmtree(CHROMA_DIR, ignore_errors=True)
         Path(CHROMA_DIR).mkdir(parents=True, exist_ok=True)
@@ -218,7 +178,7 @@ def _stage_embed(
 
         db.add_texts(texts=texts, metadatas=metas, ids=ids)
 
-        # ── VRAM housekeeping (critical for RTX 3050) ───────────
+
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         gc.collect()
@@ -231,10 +191,6 @@ def _stage_embed(
     log.info("  ✔ Chroma DB stored → %s", CHROMA_DIR)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  Full pipeline
-# ═══════════════════════════════════════════════════════════════════════════
-
 def run_pipeline(
     source_dir: Path | None = None,
     collection_name: str = "default_notebook",
@@ -242,17 +198,6 @@ def run_pipeline(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
 ) -> dict[str, Any]:
-    """
-    Synchronous Clean → Chunk → Embed pipeline.
-
-    Parameters
-    ----------
-    source_dir      : Folder with raw documents.  Defaults to UPLOAD_DIR.
-    collection_name : ChromaDB collection to write to.
-    reset_db        : Wipe existing Chroma DB before embedding.
-    chunk_size      : Characters per chunk (UI-tuneable).
-    chunk_overlap   : Overlap between chunks (UI-tuneable).
-    """
     global pipeline_status
     pipeline_status = PipelineStatus()
     src = source_dir or UPLOAD_DIR
@@ -292,10 +237,6 @@ def run_pipeline(
     return pipeline_status.to_dict()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  Async wrapper  (Streamlit background ingestion)
-# ═══════════════════════════════════════════════════════════════════════════
-
 def run_pipeline_async(
     source_dir: Path | None = None,
     collection_name: str = "default_notebook",
@@ -303,11 +244,6 @@ def run_pipeline_async(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
 ) -> None:
-    """
-    Fire-and-forget from the Streamlit main thread.
-    Runs the full pipeline in a background daemon thread.
-    The UI reads ``pipeline_status`` to display progress.
-    """
     import threading
 
     thread = threading.Thread(
@@ -323,10 +259,6 @@ def run_pipeline_async(
     )
     thread.start()
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-#  CLI
-# ═══════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     import json

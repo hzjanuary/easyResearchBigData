@@ -1,10 +1,3 @@
-"""
-easyResearch for Big Data — Auto-Summariser
-=============================================
-Generates a concise summary from the first few chunks of a notebook.
-Supports Groq (LLaMA 3.3) and Google Gemini.
-"""
-
 from __future__ import annotations
 
 import os
@@ -31,9 +24,6 @@ def generate_notebook_summary(
     api_key: str | None = None,
     llm_provider: str = "groq",
 ) -> str:
-    """
-    Build a summary from the first ~10 chunks (usually intro / abstract).
-    """
     sample_context = "\n\n".join(
         chunk.page_content for chunk in chunks[:10]
     )
