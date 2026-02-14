@@ -1,0 +1,35 @@
+# ─── Python ──────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# ─── Environment ─────────────────────
+.env
+.venv/
+venv/
+env/
+
+# ─── Data & DB (regenerated) ────────
+database/chroma_db/
+database/chat_history/
+uploads/*
+!uploads/.gitkeep
+
+# ─── IDE ─────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── OS ──────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Misc ────────────────────────────
+*.log
+*.bak

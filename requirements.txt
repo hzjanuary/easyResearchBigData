@@ -1,0 +1,40 @@
+# ── LangChain ecosystem ──────────────────────────────
+langchain
+langchain-core
+langchain-community
+langchain-text-splitters
+langchain-groq
+langchain-google-genai
+langchain-chroma
+langchain-huggingface
+
+# ── Vector DB & Search ───────────────────────────────
+chromadb
+rank-bm25
+
+# ── Document loaders ────────────────────────────────
+pypdf
+docx2txt
+
+# ── Embeddings & Reranker ───────────────────────────
+sentence-transformers
+transformers
+
+# ── PyTorch (CUDA 12.6) ─────────────────────────────
+--extra-index-url https://download.pytorch.org/whl/cu126
+torch
+torchvision
+torchaudio
+
+# ── Web frameworks ──────────────────────────────────
+streamlit
+fastapi
+uvicorn
+python-multipart
+
+# ── Dataset download ────────────────────────────────
+datasets
+kagglehub
+
+# ── Utilities ───────────────────────────────────────
+python-dotenv
