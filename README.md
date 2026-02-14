@@ -1,6 +1,6 @@
 # 🧠 easyResearch for Big Data
 
-High-performance **RAG (Retrieval-Augmented Generation)** system combining **easyResearch**'s workspace UI with **EpsteinFiles-RAG**'s big data pipeline. Designed for consumer hardware — **RTX 3050 (4 GB VRAM)** + **Huananzhi B760** CPU.
+High-performance **RAG (Retrieval-Augmented Generation)** system combining **easyResearch**'s workspace UI with **EpsteinFiles-RAG**'s big data pipeline.
 
 ## Architecture
 
