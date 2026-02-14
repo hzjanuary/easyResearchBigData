@@ -151,4 +151,9 @@ Key settings in `config.py`:
 
 ## License
 
-MIT
+MIT License - See [LICENSE](LICENSE) file for more details.
+
+---
+
+<p align="center">
+  Made with ❤️ by easyResearch
