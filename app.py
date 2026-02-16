@@ -204,6 +204,7 @@ with st.sidebar:
                 for uf in uploaded:
                     (UPLOAD_DIR / uf.name).write_bytes(uf.getvalue())
                 st.toast(f"Saved {len(uploaded)} file(s)")
+                st.session_state.pop("pending_files", None)
                 time.sleep(0.4)
                 st.rerun()
 
@@ -218,31 +219,67 @@ with st.sidebar:
                     "Dataset ID", placeholder="teyler/epstein-files-20k",
                     label_visibility="collapsed", key="hf_ds_id",
                 )
+                max_docs = st.number_input(
+                    "Max documents (0 = all)", min_value=0, value=5000, step=500,
+                    key="hf_max_docs",
+                )
+                rows_per_file = st.number_input(
+                    "Rows per file", min_value=1, value=100, step=50,
+                    key="hf_rows_per_file",
+                )
                 dl_btn = st.button("⬇ Download", key="dl_hf", use_container_width=True, type="primary")
                 if dl_btn and ds_id and ds_id.strip():
-                    with st.spinner(f"Downloading `{ds_id.strip()}` from HuggingFace…"):
-                        try:
-                            from datasets import load_dataset
-                            dataset = load_dataset(ds_id.strip())
-                            split = list(dataset.keys())[0]
-                            ds_dir = UPLOAD_DIR / ds_id.strip().replace("/", "_")
-                            ds_dir.mkdir(parents=True, exist_ok=True)
-                            count = 0
-                            for i, row in enumerate(dataset[split]):
-                                # Try common text columns
-                                text = None
-                                for col in ("text", "content", "document", "page_content"):
-                                    if col in row and row[col]: text = str(row[col]); break
-                                if text is None:
-                                    text = "\n".join(str(v) for v in row.values() if v)
-                                if text.strip():
-                                    (ds_dir / f"doc_{i:06d}.txt").write_text(text, encoding="utf-8")
-                                    count += 1
-                            st.success(f"✅ Saved {count} documents to `uploads/{ds_dir.name}/`")
-                            time.sleep(0.5)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Download failed: {e}")
+                    try:
+                        from datasets import load_dataset
+
+                        ds_dir = UPLOAD_DIR / ds_id.strip().replace("/", "_")
+                        ds_dir.mkdir(parents=True, exist_ok=True)
+                        dataset = load_dataset(ds_id.strip(), streaming=True)
+                        split = list(dataset.keys())[0]
+                        stream = dataset[split]
+
+                        pbar = st.progress(0.0, text="Downloading…")
+                        buf = []
+                        count = 0
+                        file_idx = 0
+                        limit = max_docs if max_docs > 0 else float("inf")
+                        rpf = max(1, rows_per_file)
+
+                        for row in stream:
+                            if count >= limit:
+                                break
+                            text = None
+                            for col in ("text", "content", "document", "page_content"):
+                                if col in row and row[col]:
+                                    text = str(row[col])
+                                    break
+                            if text is None:
+                                text = "\n".join(str(v) for v in row.values() if v)
+                            if text.strip():
+                                buf.append(text.strip())
+                                count += 1
+                            if len(buf) >= rpf:
+                                (ds_dir / f"batch_{file_idx:05d}.txt").write_text(
+                                    "\n\n".join(buf), encoding="utf-8",
+                                )
+                                file_idx += 1
+                                buf.clear()
+                            if max_docs > 0 and count % 50 == 0:
+                                pbar.progress(min(count / limit, 1.0), text=f"Downloaded {count}/{max_docs} rows…")
+
+                        if buf:
+                            (ds_dir / f"batch_{file_idx:05d}.txt").write_text(
+                                "\n\n".join(buf), encoding="utf-8",
+                            )
+                            file_idx += 1
+
+                        pbar.progress(1.0, text="Done!")
+                        st.success(f"✅ {count} rows → {file_idx} files in `uploads/{ds_dir.name}/`")
+                        st.session_state.pop("pending_files", None)
+                        time.sleep(0.5)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Download failed: {e}")
             else:
                 kg_id = st.text_input(
                     "Dataset ID", placeholder="jazivxt/the-epstein-files",
@@ -250,27 +287,46 @@ with st.sidebar:
                 )
                 dl_btn = st.button("⬇ Download", key="dl_kg", use_container_width=True, type="primary")
                 if dl_btn and kg_id and kg_id.strip():
-                    with st.spinner(f"Downloading `{kg_id.strip()}` from Kaggle…"):
-                        try:
-                            import kagglehub
-                            downloaded_path = kagglehub.dataset_download(kg_id.strip())
-                            downloaded_path = Path(downloaded_path)
-                            from config import SUPPORTED_EXTENSIONS
-                            count = 0
-                            dest_dir = UPLOAD_DIR / kg_id.strip().replace("/", "_")
-                            dest_dir.mkdir(parents=True, exist_ok=True)
-                            for f in downloaded_path.rglob("*"):
-                                if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS:
-                                    shutil.copy2(f, dest_dir / f.name)
-                                    count += 1
-                            st.success(f"✅ Copied {count} files to `uploads/{dest_dir.name}/`")
-                            time.sleep(0.5)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Download failed: {e}")
+                    try:
+                        import kagglehub
+                        from config import SUPPORTED_EXTENSIONS
 
-        pending_files = discover_files(UPLOAD_DIR)
-        st.caption(f"**{len(pending_files)}** file(s) ready in `uploads/`")
+                        pbar = st.progress(0.0, text="Downloading from Kaggle…")
+                        downloaded_path = Path(kagglehub.dataset_download(kg_id.strip()))
+                        pbar.progress(0.5, text="Copying files…")
+
+                        dest_dir = UPLOAD_DIR / kg_id.strip().replace("/", "_")
+                        dest_dir.mkdir(parents=True, exist_ok=True)
+                        all_files = [f for f in downloaded_path.rglob("*")
+                                     if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS]
+                        for i, f in enumerate(all_files):
+                            shutil.copy2(f, dest_dir / f.name)
+                            if len(all_files) > 0:
+                                pbar.progress(0.5 + 0.5 * (i + 1) / len(all_files),
+                                              text=f"Copying {i + 1}/{len(all_files)} files…")
+
+                        pbar.progress(1.0, text="Done!")
+                        st.success(f"✅ {len(all_files)} files → `uploads/{dest_dir.name}/`")
+                        st.session_state.pop("pending_files", None)
+                        time.sleep(0.5)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Download failed: {e}")
+
+        if "pending_files" not in st.session_state:
+            st.session_state.pending_files = discover_files(UPLOAD_DIR)
+        pending_files = st.session_state.pending_files
+
+        col_info, col_refresh = st.columns([0.8, 0.2])
+        col_info.markdown(
+            f"<p style='margin:0;padding-top:6px;font-size:.85rem;color:#9ca3af'>"
+            f"<b>{len(pending_files)}</b> file(s) ready in "
+            f"<code style='background:#27272a;padding:2px 5px;border-radius:4px;font-size:.8rem'>uploads/</code></p>",
+            unsafe_allow_html=True,
+        )
+        if col_refresh.button("🔄", key="refresh_files", help="Rescan uploads/"):
+            st.session_state.pending_files = discover_files(UPLOAD_DIR)
+            st.rerun()
 
         with st.expander("⚙ Chunk settings", expanded=False):
             chunk_size = st.slider("Chunk size", 200, 2000, DEFAULT_CHUNK_SIZE, 50)
