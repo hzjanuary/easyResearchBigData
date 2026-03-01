@@ -12,24 +12,21 @@ from core.embedder import (
     delete_notebook,
     delete_file_from_notebook,
     get_notebook_stats,
+    check_qdrant_health,
 )
 from core.generator import query_rag_system
 from core.summarizer import generate_notebook_summary
 from core.cleaner_pro import discover_files
-from core.ingestion_worker import run_pipeline_async, pipeline_status
+from core.ingestion_worker import run_pipeline
 from config import (
-    UPLOAD_DIR,
-    CHROMA_DIR,
+    Config,
     DEFAULT_CHUNK_SIZE,
     DEFAULT_CHUNK_OVERLAP,
 )
 
-CHAT_DIR = "database/chat_history"
-os.makedirs(CHAT_DIR, exist_ok=True)
-
 
 def _chat_path(name: str) -> str:
-    return os.path.join(CHAT_DIR, f"{name}.json")
+    return str(Config.get_chat_dir(name) / "history.json")
 
 
 def save_chat(name: str, messages: list) -> None:
@@ -191,6 +188,12 @@ with st.sidebar:
 
     tab_ingest, tab_files, tab_cfg = st.tabs(["📥 Ingest", "📁 Files", "⚙️ Settings"])
 
+    ws_upload_dir = Config.get_workspace_dir(final_notebook_name)
+    ws_summary_dir = Config.get_summary_dir(final_notebook_name)
+    col_name = Config.get_collection_name(final_notebook_name)
+
+    st.caption(f"🔗 Qdrant: `{col_name}`")
+
     with tab_ingest:
         st.caption("Upload files or download a dataset → Start pipeline")
 
@@ -199,13 +202,16 @@ with st.sidebar:
             accept_multiple_files=True, label_visibility="collapsed",
         )
 
+        pending_key = f"pending_files_{final_notebook_name}"
+
         if uploaded:
-            if st.button(f"💾 Save {len(uploaded)} file(s) to uploads/", use_container_width=True):
+            if st.button(f"💾 Save {len(uploaded)} file(s)", use_container_width=True):
                 for uf in uploaded:
-                    (UPLOAD_DIR / uf.name).write_bytes(uf.getvalue())
-                st.toast(f"Saved {len(uploaded)} file(s)")
-                st.session_state.pop("pending_files", None)
-                time.sleep(0.4)
+                    (ws_upload_dir / uf.name).write_bytes(uf.getvalue())
+                st.toast(f"Saved {len(uploaded)} file(s) to {final_notebook_name}/")
+                # Auto-scan: update file list immediately after upload
+                st.session_state[pending_key] = discover_files(ws_upload_dir)
+                time.sleep(0.3)
                 st.rerun()
 
 
@@ -232,7 +238,7 @@ with st.sidebar:
                     try:
                         from datasets import load_dataset
 
-                        ds_dir = UPLOAD_DIR / ds_id.strip().replace("/", "_")
+                        ds_dir = ws_upload_dir / ds_id.strip().replace("/", "_")
                         ds_dir.mkdir(parents=True, exist_ok=True)
                         dataset = load_dataset(ds_id.strip(), streaming=True)
                         split = list(dataset.keys())[0]
@@ -275,7 +281,8 @@ with st.sidebar:
 
                         pbar.progress(1.0, text="Done!")
                         st.success(f"✅ {count} rows → {file_idx} files in `uploads/{ds_dir.name}/`")
-                        st.session_state.pop("pending_files", None)
+                        # Auto-scan after download
+                        st.session_state[pending_key] = discover_files(ws_upload_dir)
                         time.sleep(0.5)
                         st.rerun()
                     except Exception as e:
@@ -295,7 +302,7 @@ with st.sidebar:
                         downloaded_path = Path(kagglehub.dataset_download(kg_id.strip()))
                         pbar.progress(0.5, text="Copying files…")
 
-                        dest_dir = UPLOAD_DIR / kg_id.strip().replace("/", "_")
+                        dest_dir = ws_upload_dir / kg_id.strip().replace("/", "_")
                         dest_dir.mkdir(parents=True, exist_ok=True)
                         all_files = [f for f in downloaded_path.rglob("*")
                                      if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS]
@@ -307,25 +314,26 @@ with st.sidebar:
 
                         pbar.progress(1.0, text="Done!")
                         st.success(f"✅ {len(all_files)} files → `uploads/{dest_dir.name}/`")
-                        st.session_state.pop("pending_files", None)
+                        # Auto-scan after download
+                        st.session_state[pending_key] = discover_files(ws_upload_dir)
                         time.sleep(0.5)
                         st.rerun()
                     except Exception as e:
                         st.error(f"Download failed: {e}")
 
-        if "pending_files" not in st.session_state:
-            st.session_state.pending_files = discover_files(UPLOAD_DIR)
-        pending_files = st.session_state.pending_files
+        if pending_key not in st.session_state:
+            st.session_state[pending_key] = discover_files(ws_upload_dir)
+        pending_files = st.session_state[pending_key]
 
         col_info, col_refresh = st.columns([0.8, 0.2])
         col_info.markdown(
             f"<p style='margin:0;padding-top:6px;font-size:.85rem;color:#9ca3af'>"
-            f"<b>{len(pending_files)}</b> file(s) ready in "
-            f"<code style='background:#27272a;padding:2px 5px;border-radius:4px;font-size:.8rem'>uploads/</code></p>",
+            f"<b>{len(pending_files)}</b> file(s) in "
+            f"<code style='background:#27272a;padding:2px 5px;border-radius:4px;font-size:.8rem'>{final_notebook_name}/</code></p>",
             unsafe_allow_html=True,
         )
-        if col_refresh.button("🔄", key="refresh_files", help="Rescan uploads/"):
-            st.session_state.pending_files = discover_files(UPLOAD_DIR)
+        if col_refresh.button("🔄", key="refresh_files", help="Rescan workspace"):
+            st.session_state[pending_key] = discover_files(ws_upload_dir)
             st.rerun()
 
         with st.expander("⚙ Chunk settings", expanded=False):
@@ -342,57 +350,40 @@ with st.sidebar:
             )
         with col_reset:
             if st.button("🗑 Reset DB", key="reset_db_btn", use_container_width=True):
-                if Path(CHROMA_DIR).exists():
-                    shutil.rmtree(CHROMA_DIR, ignore_errors=True)
-                    Path(CHROMA_DIR).mkdir(parents=True, exist_ok=True)
-                    st.toast("Chroma DB reset.")
+                if delete_notebook(final_notebook_name):
+                    st.toast(f"Qdrant collection '{final_notebook_name}' reset.")
                     time.sleep(0.4)
                     st.rerun()
 
         if start_btn:
-            run_pipeline_async(
-                source_dir=UPLOAD_DIR,
-                collection_name=final_notebook_name,
-                reset_db=reset_db,
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-            )
-            st.session_state["ingestion_running"] = True
-
-        if st.session_state.get("ingestion_running", False):
-            pbar = st.progress(0.0, text="Starting pipeline…")
-            status_text = st.empty()
-
-            while pipeline_status.stage not in ("done", "error", "idle"):
-                pbar.progress(
-                    min(pipeline_status.progress, 1.0),
-                    text=f"**{pipeline_status.stage.upper()}** — {pipeline_status.message}",
+            with st.sidebar.status("Đang xử lý pipeline...", expanded=True) as status:
+                status.write("🧹 Cleaning documents...")
+                result = run_pipeline(
+                    source_dir=ws_upload_dir,
+                    collection_name=final_notebook_name,
+                    reset_db=reset_db,
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap,
                 )
-                status_text.caption(
-                    f"Cleaned: {pipeline_status.docs_cleaned}  ·  "
-                    f"Chunks: {pipeline_status.chunks_created}  ·  "
-                    f"Embedded: {pipeline_status.chunks_embedded}"
-                )
-                time.sleep(0.5)
 
-            if pipeline_status.stage == "done":
-                pbar.progress(1.0, text="✅ Pipeline complete!")
-                st.success(pipeline_status.message)
-            elif pipeline_status.stage == "error":
-                pbar.progress(1.0, text="❌ Pipeline failed.")
-                st.error(pipeline_status.error)
-
-            st.session_state["ingestion_running"] = False
+                if result.get("stage") == "done":
+                    status.update(label="✅ Pipeline hoàn tất!", state="complete", expanded=False)
+                    st.toast(result.get("message", "Pipeline complete!"))
+                    st.session_state.pop(pending_key, None)
+                    time.sleep(0.5)
+                    st.rerun()
+                else:
+                    status.update(label="❌ Pipeline thất bại", state="error", expanded=True)
+                    st.error(result.get("error", "Unknown error"))
 
     with tab_files:
         if selected_option == "➕ New workspace…":
             st.caption("Create a workspace first.")
         else:
-            summary_path = os.path.join(CHROMA_DIR, f"{final_notebook_name}_summary.txt")
-            if os.path.exists(summary_path):
+            summary_path = ws_summary_dir / "summary.txt"
+            if summary_path.exists():
                 with st.expander("📝 Summary", expanded=False):
-                    with open(summary_path, "r", encoding="utf-8") as f:
-                        st.markdown(f.read())
+                    st.markdown(summary_path.read_text(encoding="utf-8"))
 
             _stats = get_notebook_stats(final_notebook_name)
             if _stats["files"]:
@@ -412,9 +403,9 @@ with st.sidebar:
             recent = get_recent_questions(final_notebook_name)
             if recent:
                 with st.expander(f"🔍 Recent ({len(recent)})", expanded=False):
-                    for q in recent:
+                    for i, q in enumerate(recent):
                         disp = q if len(q) <= 35 else q[:35] + "…"
-                        if st.button(disp, key=f"hist_{hash(q)}", use_container_width=True):
+                        if st.button(disp, key=f"hist_{i}_{hash(q)}", use_container_width=True):
                             st.session_state.setdefault("messages", [])
                             st.session_state.messages.append({"role": "user", "content": q})
                             st.rerun()
@@ -441,11 +432,13 @@ with st.sidebar:
         if selected_option != "➕ New workspace…":
             if st.button("🗑 Delete workspace", use_container_width=True):
                 if delete_notebook(final_notebook_name):
-                    sp = os.path.join(CHROMA_DIR, f"{final_notebook_name}_summary.txt")
-                    if os.path.exists(sp):
-                        os.remove(sp)
+                    if ws_summary_dir.exists():
+                        shutil.rmtree(ws_summary_dir, ignore_errors=True)
+                    if ws_upload_dir.exists():
+                        shutil.rmtree(ws_upload_dir, ignore_errors=True)
                     delete_chat(final_notebook_name)
-                    st.toast("Workspace deleted.")
+                    st.session_state.pop(pending_key, None)
+                    st.toast(f"Workspace '{final_notebook_name}' deleted.")
                     time.sleep(0.4)
                     st.rerun()
 

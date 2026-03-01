@@ -7,9 +7,51 @@ load_dotenv()
 
 BASE_DIR        = Path(__file__).resolve().parent
 UPLOAD_DIR      = BASE_DIR / "uploads"
-CHROMA_DIR      = str(BASE_DIR / "database" / "chroma_db")
 CHAT_DIR        = str(BASE_DIR / "database" / "chat_history")
 LOG_FILE        = BASE_DIR / "database" / "ingestion.log"
+
+QDRANT_HOST       = os.getenv("QDRANT_HOST", "localhost")
+QDRANT_PORT       = int(os.getenv("QDRANT_PORT", "6333"))
+QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "easy_research_bigdata")
+QDRANT_VECTOR_SIZE = 384
+
+
+class Config:
+    """Centralized multi-workspace configuration."""
+
+    BASE_DIR = Path(__file__).resolve().parent
+    QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
+    QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
+
+    @staticmethod
+    def _safe_name(workspace_name: str) -> str:
+        return workspace_name.replace(" ", "_").replace("-", "_").lower()
+
+    @staticmethod
+    def get_collection_name(workspace_name: str) -> str:
+        """Qdrant collection name: ws_{workspace_name}"""
+        return f"ws_{Config._safe_name(workspace_name)}"
+
+    @staticmethod
+    def get_workspace_dir(workspace_name: str) -> Path:
+        """uploads/{workspace_name}/"""
+        path = Config.BASE_DIR / "uploads" / Config._safe_name(workspace_name)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @staticmethod
+    def get_summary_dir(workspace_name: str) -> Path:
+        """database/summaries/{workspace_name}/"""
+        path = Config.BASE_DIR / "database" / "summaries" / Config._safe_name(workspace_name)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @staticmethod
+    def get_chat_dir(workspace_name: str) -> Path:
+        """database/chat_history/{workspace_name}/"""
+        path = Config.BASE_DIR / "database" / "chat_history" / Config._safe_name(workspace_name)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -51,5 +93,4 @@ API_HOST             = "127.0.0.1"
 API_PORT             = 8000
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-Path(CHROMA_DIR).mkdir(parents=True, exist_ok=True)
 Path(CHAT_DIR).mkdir(parents=True, exist_ok=True)

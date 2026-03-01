@@ -2,17 +2,24 @@
 from __future__ import annotations
 
 import gc
-import os
-import shutil
-import time
-from pathlib import Path
+from typing import Callable
 
-import chromadb
 import torch
-from langchain_chroma import Chroma
+from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
+from qdrant_client.models import VectorParams, Distance
+from langchain_qdrant import QdrantVectorStore
 from langchain_huggingface import HuggingFaceEmbeddings
 
-from config import CHROMA_DIR, DEVICE, EMBEDDING_MODEL, EMBED_BATCH_SIZE
+from config import (
+    Config,
+    DEVICE,
+    EMBEDDING_MODEL,
+    EMBED_BATCH_SIZE,
+    QDRANT_HOST,
+    QDRANT_PORT,
+    QDRANT_VECTOR_SIZE,
+)
 
 print(f"🚀 easyResearch running on device: {DEVICE.upper()}")
 
@@ -23,16 +30,58 @@ embedding_model = HuggingFaceEmbeddings(
 )
 
 
+def get_qdrant_client() -> QdrantClient:
+    return QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+
+
+def check_qdrant_health() -> dict:
+    try:
+        client = get_qdrant_client()
+        info = client.get_collections()
+        return {
+            "status": "ok",
+            "host": f"{QDRANT_HOST}:{QDRANT_PORT}",
+            "collections": [c.name for c in info.collections],
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def ensure_collection_exists(collection_name: str) -> None:
+    client = get_qdrant_client()
+    try:
+        client.get_collection(collection_name)
+    except UnexpectedResponse:
+        client.create_collection(
+            collection_name=collection_name,
+            vectors_config=VectorParams(size=QDRANT_VECTOR_SIZE, distance=Distance.COSINE),
+        )
+        print(f"✨ Created collection: {collection_name}")
+
+
+def get_vector_store(collection_name: str) -> QdrantVectorStore:
+    col_name = Config.get_collection_name(collection_name)
+    ensure_collection_exists(col_name)
+    return QdrantVectorStore.from_existing_collection(
+        embedding=embedding_model,
+        collection_name=col_name,
+        url=f"http://{QDRANT_HOST}:{QDRANT_PORT}",
+    )
+
+
 def add_to_vector_db(
     chunks,
-    collection_name: str = "default_notebook",
+    collection_name: str,
     batch_size: int | None = None,
-    progress_callback=None,
+    progress_callback: Callable[[int, int], None] | None = None,
 ):
-    db = Chroma(
-        collection_name=collection_name,
-        embedding_function=embedding_model,
-        persist_directory=CHROMA_DIR,
+    col_name = Config.get_collection_name(collection_name)
+    ensure_collection_exists(col_name)
+    
+    db = QdrantVectorStore.from_existing_collection(
+        embedding=embedding_model,
+        collection_name=col_name,
+        url=f"http://{QDRANT_HOST}:{QDRANT_PORT}",
     )
 
     texts = [chunk.page_content for chunk in chunks]
@@ -42,7 +91,7 @@ def add_to_vector_db(
     bs = batch_size or EMBED_BATCH_SIZE
     total = len(chunks)
 
-    print(f"📥 Embedding {total} chunks into '{collection_name}' (batch={bs}) …")
+    print(f"📥 Embedding {total} chunks into '{col_name}' (batch={bs}) …")
 
     for i in range(0, total, bs):
         end = min(i + bs, total)
@@ -51,7 +100,6 @@ def add_to_vector_db(
             metadatas=metadatas[i:end],
             ids=ids[i:end],
         )
-
 
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -64,12 +112,8 @@ def add_to_vector_db(
     return db
 
 
-def get_retriever(collection_name: str = "default_notebook", k: int = 5, fetch_k: int = 20):
-    db = Chroma(
-        collection_name=collection_name,
-        embedding_function=embedding_model,
-        persist_directory=CHROMA_DIR,
-    )
+def get_retriever(collection_name: str, k: int = 5, fetch_k: int = 20):
+    db = get_vector_store(collection_name)
     return db.as_retriever(
         search_type="mmr",
         search_kwargs={"k": k, "fetch_k": fetch_k},
@@ -77,57 +121,48 @@ def get_retriever(collection_name: str = "default_notebook", k: int = 5, fetch_k
 
 
 def get_notebook_stats(notebook_name: str) -> dict:
+    col_name = Config.get_collection_name(notebook_name)
     stats = {"chunks": 0, "files": [], "size_mb": 0.0}
     try:
-        if not os.path.exists(CHROMA_DIR):
-            return stats
-
-        client = chromadb.PersistentClient(path=CHROMA_DIR)
-        target = None
-        for col in client.list_collections():
-            if col.name == notebook_name:
-                target = col
-                break
-        if not target:
-            return stats
-
-        collection = client.get_collection(notebook_name)
-        stats["chunks"] = collection.count()
+        client = get_qdrant_client()
+        info = client.get_collection(col_name)
+        stats["chunks"] = info.points_count or 0
 
         if stats["chunks"] > 0:
-            result = collection.get(include=["metadatas"])
-            if result and result["metadatas"]:
-                sources = {
-                    meta["source"]
-                    for meta in result["metadatas"]
-                    if meta and "source" in meta
-                }
-                stats["files"] = sorted(sources)
-
-        col_uuid = str(target.id)
-        dir_path = os.path.join(CHROMA_DIR, col_uuid)
-        if os.path.exists(dir_path):
-            total_size = sum(
-                os.path.getsize(os.path.join(dp, f))
-                for dp, _, fns in os.walk(dir_path)
-                for f in fns
+            points, _ = client.scroll(
+                collection_name=col_name,
+                limit=10000,
+                with_payload=True,
+                with_vectors=False,
             )
-            stats["size_mb"] = round(total_size / (1024 * 1024), 2)
+            sources = {
+                p.payload.get("metadata", {}).get("source", "")
+                for p in points
+                if p.payload
+            }
+            stats["files"] = sorted([s for s in sources if s])
 
+        if hasattr(info, "disk_data_size"):
+            stats["size_mb"] = round((info.disk_data_size or 0) / (1024 * 1024), 2)
+
+    except UnexpectedResponse:
+        pass
     except Exception as e:
-        print(f"⚠️ Stats error for {notebook_name}: {e}")
+        print(f"⚠️ Stats error for {col_name}: {e}")
     return stats
 
 
 def get_total_db_size() -> float:
     try:
-        if not os.path.exists(CHROMA_DIR):
-            return 0.0
-        total = sum(
-            os.path.getsize(os.path.join(dp, f))
-            for dp, _, fns in os.walk(CHROMA_DIR)
-            for f in fns
-        )
+        client = get_qdrant_client()
+        collections = client.get_collections()
+        total = 0
+        for col in collections.collections:
+            try:
+                info = client.get_collection(col.name)
+                total += info.disk_data_size or 0
+            except Exception:
+                pass
         return round(total / (1024 * 1024), 2)
     except Exception:
         return 0.0
@@ -135,57 +170,61 @@ def get_total_db_size() -> float:
 
 def get_all_notebooks() -> list[str]:
     try:
-        if not os.path.exists(CHROMA_DIR):
-            return []
-        client = chromadb.PersistentClient(path=CHROMA_DIR)
-        return [c.name for c in client.list_collections()]
+        client = get_qdrant_client()
+        collections = client.get_collections()
+        workspaces = []
+        for c in collections.collections:
+            if c.name.startswith("ws_"):
+                ws_name = c.name[3:]
+                workspaces.append(ws_name)
+        return workspaces
     except Exception as e:
-        print(f"⚠️ List notebooks error: {e}")
+        print(f"⚠️ List collections error: {e}")
         return []
 
 
 def delete_file_from_notebook(notebook_name: str, source_name: str) -> int:
+    col_name = Config.get_collection_name(notebook_name)
     try:
-        client = chromadb.PersistentClient(path=CHROMA_DIR)
-        collection = client.get_collection(notebook_name)
-        result = collection.get(include=["metadatas"])
-        ids_to_delete = [
-            doc_id
-            for doc_id, meta in zip(result["ids"], result["metadatas"])
-            if meta and meta.get("source") == source_name
-        ]
-        if ids_to_delete:
-            BATCH = 500
-            for i in range(0, len(ids_to_delete), BATCH):
-                collection.delete(ids=ids_to_delete[i : i + BATCH])
-            print(f"🗑️ Deleted {len(ids_to_delete)} chunks of '{source_name}'")
-        return len(ids_to_delete)
+        client = get_qdrant_client()
+        from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+        points, _ = client.scroll(
+            collection_name=col_name,
+            scroll_filter=Filter(
+                must=[
+                    FieldCondition(
+                        key="metadata.source",
+                        match=MatchValue(value=source_name),
+                    )
+                ]
+            ),
+            limit=10000,
+            with_payload=False,
+            with_vectors=False,
+        )
+
+        if points:
+            ids = [p.id for p in points]
+            client.delete(
+                collection_name=col_name,
+                points_selector=ids,
+            )
+            print(f"🗑️ Deleted {len(ids)} chunks of '{source_name}' from {col_name}")
+            return len(ids)
+        return 0
     except Exception as e:
         print(f"❌ Delete file error: {e}")
         return 0
 
 
 def delete_notebook(notebook_name: str) -> bool:
+    col_name = Config.get_collection_name(notebook_name)
     try:
-        client = chromadb.PersistentClient(path=CHROMA_DIR)
-        target = None
-        for col in client.list_collections():
-            if col.name == notebook_name:
-                target = col
-                break
-
-        col_uuid = str(target.id) if target else None
-        client.delete_collection(notebook_name)
-        print(f"🗑️ Deleted collection: {notebook_name}")
-
-        if col_uuid:
-            dir_path = os.path.join(CHROMA_DIR, col_uuid)
-            if os.path.exists(dir_path):
-                time.sleep(0.5)
-                shutil.rmtree(dir_path, ignore_errors=True)
-                print(f"📂 Cleaned up folder: {dir_path}")
-
+        client = get_qdrant_client()
+        client.delete_collection(col_name)
+        print(f"🗑️ Deleted collection: {col_name}")
         return True
     except Exception as e:
-        print(f"❌ Delete notebook error: {e}")
+        print(f"❌ Delete collection error: {e}")
         return False

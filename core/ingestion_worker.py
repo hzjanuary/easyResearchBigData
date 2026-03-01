@@ -4,6 +4,7 @@ import gc
 import hashlib
 import logging
 import time
+import uuid
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Any, Callable
@@ -13,13 +14,16 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
 from config import (
-    CHROMA_DIR,
+    Config,
     DEFAULT_CHUNK_SIZE,
     DEFAULT_CHUNK_OVERLAP,
     EMBED_BATCH_SIZE,
     MAX_WORKERS,
     LOG_FILE,
     UPLOAD_DIR,
+    QDRANT_HOST,
+    QDRANT_PORT,
+    QDRANT_VECTOR_SIZE,
 )
 
 logging.basicConfig(
@@ -140,20 +144,36 @@ def _stage_embed(
     collection_name: str,
     reset_db: bool = True,
 ) -> None:
-    import shutil
-    from langchain_chroma import Chroma
+    from qdrant_client import QdrantClient
+    from qdrant_client.http.exceptions import UnexpectedResponse
+    from langchain_qdrant import QdrantVectorStore
     from langchain_huggingface import HuggingFaceEmbeddings
     from config import EMBEDDING_MODEL, EMBED_BATCH_SIZE as BS, DEVICE as DEV
 
+    col_name = Config.get_collection_name(collection_name)
     pipeline_status.stage = "embedding"
     pipeline_status.progress = 0.0
-    log.info("▶ Stage 3/3 — Embedding %d chunks (device=%s, batch=%d)",
-             len(chunks), DEV, BS)
+    log.info("▶ Stage 3/3 — Embedding %d chunks into '%s' (device=%s, batch=%d)",
+             len(chunks), col_name, DEV, BS)
 
-    if reset_db and Path(CHROMA_DIR).exists():
-        log.info("  Resetting Chroma DB …")
-        shutil.rmtree(CHROMA_DIR, ignore_errors=True)
-        Path(CHROMA_DIR).mkdir(parents=True, exist_ok=True)
+    client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+
+    if reset_db:
+        try:
+            client.delete_collection(col_name)
+            log.info("  Resetting Qdrant collection: %s", col_name)
+        except UnexpectedResponse:
+            pass
+
+    try:
+        client.get_collection(col_name)
+    except UnexpectedResponse:
+        from qdrant_client.models import VectorParams, Distance
+        client.create_collection(
+            collection_name=col_name,
+            vectors_config=VectorParams(size=QDRANT_VECTOR_SIZE, distance=Distance.COSINE),
+        )
+        log.info("  Created Qdrant collection: %s", col_name)
 
     embeddings = HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL,
@@ -161,10 +181,10 @@ def _stage_embed(
         encode_kwargs={"batch_size": BS, "normalize_embeddings": True},
     )
 
-    db = Chroma(
-        collection_name=collection_name,
-        persist_directory=CHROMA_DIR,
-        embedding_function=embeddings,
+    db = QdrantVectorStore.from_existing_collection(
+        embedding=embeddings,
+        collection_name=col_name,
+        url=f"http://{QDRANT_HOST}:{QDRANT_PORT}",
     )
 
     total = len(chunks)
@@ -174,10 +194,12 @@ def _stage_embed(
 
         texts = [c["text"] for c in batch]
         metas = [c["metadata"] for c in batch]
-        ids = [hashlib.sha256(c["text"].encode()).hexdigest() for c in batch]
+        ids = [
+            str(uuid.uuid5(uuid.NAMESPACE_DNS, hashlib.sha256(c["text"].encode()).hexdigest()))
+            for c in batch
+        ]
 
         db.add_texts(texts=texts, metadatas=metas, ids=ids)
-
 
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -188,7 +210,7 @@ def _stage_embed(
         pipeline_status.message = f"Embedded {end}/{total} chunks"
         log.info("  Embedded %d / %d", end, total)
 
-    log.info("  ✔ Chroma DB stored → %s", CHROMA_DIR)
+    log.info("  ✔ Qdrant DB stored → %s:%d/%s", QDRANT_HOST, QDRANT_PORT, col_name)
 
 
 def run_pipeline(

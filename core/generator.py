@@ -7,7 +7,6 @@ from typing import Any
 
 import torch
 from dotenv import load_dotenv
-from langchain_chroma import Chroma
 from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -15,9 +14,8 @@ from langchain_core.messages import HumanMessage, AIMessage
 from sentence_transformers import CrossEncoder
 from rank_bm25 import BM25Okapi
 
-from core.embedder import embedding_model
+from core.embedder import embedding_model, get_vector_store
 from config import (
-    CHROMA_DIR,
     DEVICE,
     MAX_HISTORY_MESSAGES,
     RERANKER_MODEL,
@@ -188,29 +186,27 @@ def query_rag_system(
         except Exception as e:
             print(f"⚠️ Contextualization failed: {e}")
 
-    db = Chroma(
-        collection_name=collection_name,
-        persist_directory=CHROMA_DIR,
-        embedding_function=embedding_model,
-    )
+    db = get_vector_store(collection_name)
 
-    where_filter: dict | None = None
-    conditions: list[dict] = []
-    if format_filter:
-        conditions.append({"format": {"$eq": format_filter}})
-    if source_filter:
-        conditions.append({"source": {"$contains": source_filter}})
-    if len(conditions) == 1:
-        where_filter = conditions[0]
-    elif len(conditions) > 1:
-        where_filter = {"$and": conditions}
+    qdrant_filter = None
+    if format_filter or source_filter:
+        from qdrant_client.models import Filter, FieldCondition, MatchValue, MatchText
+        conditions = []
+        if format_filter:
+            conditions.append(
+                FieldCondition(key="metadata.format", match=MatchValue(value=format_filter))
+            )
+        if source_filter:
+            conditions.append(
+                FieldCondition(key="metadata.source", match=MatchText(text=source_filter))
+            )
+        qdrant_filter = Filter(must=conditions)
 
-
-    if where_filter:
+    if qdrant_filter:
         all_docs = db.similarity_search(
             standalone_question,
             k=k_target * 2,
-            filter=where_filter,
+            filter=qdrant_filter,
         )
     else:
         retriever = db.as_retriever(

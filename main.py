@@ -12,10 +12,11 @@ from core.embedder import (
     get_notebook_stats,
     delete_notebook,
     get_total_db_size,
+    check_qdrant_health,
 )
 from core.generator import query_rag_system
 from core.summarizer import generate_notebook_summary
-from config import UPLOAD_DIR
+from config import Config, QDRANT_HOST, QDRANT_PORT
 
 
 app = FastAPI(
@@ -86,7 +87,8 @@ async def upload(
     collection_name: str = Form("Default_Project"),
 ):
     suffix = Path(file.filename).suffix
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir=str(UPLOAD_DIR)) as tmp:
+    upload_dir = Config.get_workspace_dir(collection_name)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir=str(upload_dir)) as tmp:
         content = await file.read()
         tmp.write(content)
         tmp_path = tmp.name
@@ -128,11 +130,23 @@ async def remove_notebook(collection_name: str):
 @app.get("/health")
 async def health():
     import torch
+    qdrant_status = check_qdrant_health()
     return {
-        "status": "ok",
+        "status": "ok" if qdrant_status.get("status") == "ok" else "degraded",
         "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
         "db_size_mb": get_total_db_size(),
+        "qdrant": qdrant_status,
     }
+
+
+@app.on_event("startup")
+async def startup_event():
+    status = check_qdrant_health()
+    if status.get("status") != "ok":
+        print(f"⚠️ Qdrant health check failed: {status.get('error')}")
+        print(f"   Make sure Qdrant is running at {QDRANT_HOST}:{QDRANT_PORT}")
+    else:
+        print(f"✅ Qdrant connected: {QDRANT_HOST}:{QDRANT_PORT}")
 
 
 if __name__ == "__main__":
