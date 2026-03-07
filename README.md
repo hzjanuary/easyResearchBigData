@@ -31,7 +31,7 @@ High-performance **RAG (Retrieval-Augmented Generation)** system combining **eas
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  Ingestion Pipeline (pipeline.py)                           NEW v2.1   │
+│  Ingestion Pipeline (pipeline.py)                           NEW v2.1    │
 │                                                                         │
 │  Stage 1 — Clean  (multiprocessing)                                     │
 │  Stage 2 — Enrich (LLM metadata: author, tags, summary, doc_type)  ✨   │
@@ -51,7 +51,7 @@ High-performance **RAG (Retrieval-Augmented Generation)** system combining **eas
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  Hybrid Search Pipeline (rag_engine.py)                     NEW v2.1   │
+│  Hybrid Search Pipeline (rag_engine.py)                     NEW v2.1    │
 │                                                                         │
 │  Question → Contextualisation                                           │
 │           → Dense Vector Search (Qdrant)                                │
@@ -64,7 +64,7 @@ High-performance **RAG (Retrieval-Augmented Generation)** system combining **eas
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  Observability Layer (observability.py)                     NEW v2.1   │
+│  Observability Layer (observability.py)                     NEW v2.1    │
 │                                                                         │
 │  • Full pipeline tracing (trace_id, timing, scores)                     │
 │  • RAG Metrics: Hit Rate, MRR, P50/P95/P99 latency                      │
@@ -119,8 +119,8 @@ High-performance **RAG (Retrieval-Augmented Generation)** system combining **eas
 | LLM           | Groq (LLaMA 3.3 70B Versatile) / Google Gemini 2.5 Flash |
 | Framework     | LangChain + langchain-qdrant                             |
 | GPU           | PyTorch CUDA 12.6                                        |
-| Observability | Custom tracing + JSONL logs ✨                            |
-| Resilience    | tenacity (retry with backoff) ✨                          |
+| Observability | Custom tracing + JSONL logs ✨                           |
+| Resilience    | tenacity (retry with backoff) ✨                         |
 
 ## Usage Examples (v2.1)
 
@@ -424,12 +424,12 @@ config = PipelineConfig(
 
 The system is specifically optimized for RTX 3050 with 4GB VRAM:
 
-| Component       | Optimization                              |
-| --------------- | ----------------------------------------- |
-| Cross-Encoder   | FP16 precision, batch size 8              |
+| Component       | Optimization                                  |
+| --------------- | --------------------------------------------- |
+| Cross-Encoder   | FP16 precision, batch size 8                  |
 | Embeddings      | Batch size 32, cache cleared every 10 batches |
-| Re-ranker       | Lazy loading, truncated inputs (512 tokens) |
-| GPU Cache       | `torch.cuda.empty_cache()` after batches  |
+| Re-ranker       | Lazy loading, truncated inputs (512 tokens)   |
+| GPU Cache       | `torch.cuda.empty_cache()` after batches      |
 
 ## License
 
