@@ -271,7 +271,21 @@ docker run -p 6333:6333 -p 6334:6334 \
 git clone <repo-url>
 cd easyResearchforBigData
 python -m venv .venv
-.venv\Scripts\activate          # Windows
+```
+
+**Activate virtual environment:**
+
+```bash
+# Linux / macOS
+source .venv/bin/activate
+
+# Windows
+.venv\Scripts\activate
+```
+
+**Install dependencies:**
+
+```bash
 pip install -r requirements.txt
 ```
 
