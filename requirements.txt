@@ -1,32 +1,48 @@
-﻿langchain
-langchain-core
-langchain-community
-langchain-text-splitters
-langchain-groq
-langchain-google-genai
-langchain-qdrant
-langchain-huggingface
+﻿# LangChain ecosystem
+langchain>=0.2.0
+langchain-core>=0.2.0
+langchain-community>=0.2.0
+langchain-text-splitters>=0.2.0
+langchain-groq>=0.1.0
+langchain-google-genai>=1.0.0
+langchain-qdrant>=0.1.0
+langchain-huggingface>=0.0.3
 
-qdrant-client
-rank-bm25
+# Vector database
+qdrant-client>=1.9.0
 
-pypdf
-docx2txt
+# Retrieval
+rank-bm25>=0.2.2
 
-sentence-transformers
-transformers
+# Document processing
+pypdf>=4.0.0
+docx2txt>=0.8
 
+# ML/Embeddings
+sentence-transformers>=2.7.0
+transformers>=4.40.0
+
+# PyTorch with CUDA 12.6 support
 --extra-index-url https://download.pytorch.org/whl/cu126
-torch
-torchvision
-torchaudio
+torch>=2.3.0
+torchvision>=0.18.0
+torchaudio>=2.3.0
 
-streamlit
-fastapi
-uvicorn
-python-multipart
+# Web frameworks
+streamlit>=1.35.0
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
 
-datasets
-kagglehub
+# Data sources
+datasets>=2.19.0
+kagglehub>=0.2.0
 
-python-dotenv
+# Configuration
+python-dotenv>=1.0.0
+
+# Resilience & async
+tenacity>=8.3.0
+
+# Logging & monitoring (optional)
+structlog>=24.1.0

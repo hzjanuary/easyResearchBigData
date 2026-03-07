@@ -57,7 +57,7 @@ def get_recent_questions(name: str, limit: int = 5) -> list[str]:
 
 st.set_page_config(
     page_title="easyResearch — AI Assistant",
-    page_icon="🧠",
+    page_icon="ER",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -151,18 +151,18 @@ button[class*="st-key-del_file_"]:hover
 
 
 with st.sidebar:
-    st.markdown("# 🧠 easyResearch")
+    st.markdown("# easyResearch")
 
     st.markdown("#### Workspaces")
     existing_notebooks = get_all_notebooks()
-    options = ["➕ New workspace…"] + existing_notebooks
+    options = ["+ New workspace…"] + existing_notebooks
     selected_option = st.selectbox(
         "Workspace", options, label_visibility="collapsed",
         index=1 if existing_notebooks else 0,
     )
 
     final_notebook_name = "Default_Project"
-    if selected_option == "➕ New workspace…":
+    if selected_option == "+ New workspace…":
         new_name = st.text_input(
             "Name", "New_Project", label_visibility="collapsed",
             placeholder="Enter workspace name…",
@@ -172,7 +172,7 @@ with st.sidebar:
     else:
         final_notebook_name = selected_option
         st.markdown(
-            f'<div class="ws-badge">📂 {final_notebook_name}</div>',
+            f'<div class="ws-badge">{final_notebook_name}</div>',
             unsafe_allow_html=True,
         )
         stats = get_notebook_stats(final_notebook_name)
@@ -186,13 +186,13 @@ with st.sidebar:
 
     st.divider()
 
-    tab_ingest, tab_files, tab_cfg = st.tabs(["📥 Ingest", "📁 Files", "⚙️ Settings"])
+    tab_ingest, tab_files, tab_cfg = st.tabs(["Ingest", "Files", "Settings"])
 
     ws_upload_dir = Config.get_workspace_dir(final_notebook_name)
     ws_summary_dir = Config.get_summary_dir(final_notebook_name)
     col_name = Config.get_collection_name(final_notebook_name)
 
-    st.caption(f"🔗 Qdrant: `{col_name}`")
+    st.caption(f"Qdrant: `{col_name}`")
 
     with tab_ingest:
         st.caption("Upload files or download a dataset → Start pipeline")
@@ -205,19 +205,18 @@ with st.sidebar:
         pending_key = f"pending_files_{final_notebook_name}"
 
         if uploaded:
-            if st.button(f"💾 Save {len(uploaded)} file(s)", use_container_width=True):
+            if st.button(f"Save {len(uploaded)} file(s)", use_container_width=True):
                 for uf in uploaded:
                     (ws_upload_dir / uf.name).write_bytes(uf.getvalue())
                 st.toast(f"Saved {len(uploaded)} file(s) to {final_notebook_name}/")
-                # Auto-scan: update file list immediately after upload
                 st.session_state[pending_key] = discover_files(ws_upload_dir)
                 time.sleep(0.3)
                 st.rerun()
 
 
-        with st.expander("📦 Download dataset", expanded=False):
+        with st.expander("Download dataset", expanded=False):
             dl_source = st.radio(
-                "Source", ["🤗 HuggingFace", "📊 Kaggle"],
+                "Source", ["HuggingFace", "Kaggle"],
                 horizontal=True, label_visibility="collapsed",
             )
             if "HuggingFace" in dl_source:
@@ -233,7 +232,7 @@ with st.sidebar:
                     "Rows per file", min_value=1, value=100, step=50,
                     key="hf_rows_per_file",
                 )
-                dl_btn = st.button("⬇ Download", key="dl_hf", use_container_width=True, type="primary")
+                dl_btn = st.button("Download", key="dl_hf", use_container_width=True, type="primary")
                 if dl_btn and ds_id and ds_id.strip():
                     try:
                         from datasets import load_dataset
@@ -280,8 +279,7 @@ with st.sidebar:
                             file_idx += 1
 
                         pbar.progress(1.0, text="Done!")
-                        st.success(f"✅ {count} rows → {file_idx} files in `uploads/{ds_dir.name}/`")
-                        # Auto-scan after download
+                        st.success(f"{count} rows → {file_idx} files in `uploads/{ds_dir.name}/`")
                         st.session_state[pending_key] = discover_files(ws_upload_dir)
                         time.sleep(0.5)
                         st.rerun()
@@ -292,7 +290,7 @@ with st.sidebar:
                     "Dataset ID", placeholder="jazivxt/the-epstein-files",
                     label_visibility="collapsed", key="kg_ds_id",
                 )
-                dl_btn = st.button("⬇ Download", key="dl_kg", use_container_width=True, type="primary")
+                dl_btn = st.button("Download", key="dl_kg", use_container_width=True, type="primary")
                 if dl_btn and kg_id and kg_id.strip():
                     try:
                         import kagglehub
@@ -313,8 +311,7 @@ with st.sidebar:
                                               text=f"Copying {i + 1}/{len(all_files)} files…")
 
                         pbar.progress(1.0, text="Done!")
-                        st.success(f"✅ {len(all_files)} files → `uploads/{dest_dir.name}/`")
-                        # Auto-scan after download
+                        st.success(f"{len(all_files)} files → `uploads/{dest_dir.name}/`")
                         st.session_state[pending_key] = discover_files(ws_upload_dir)
                         time.sleep(0.5)
                         st.rerun()
@@ -332,11 +329,11 @@ with st.sidebar:
             f"<code style='background:#27272a;padding:2px 5px;border-radius:4px;font-size:.8rem'>{final_notebook_name}/</code></p>",
             unsafe_allow_html=True,
         )
-        if col_refresh.button("🔄", key="refresh_files", help="Rescan workspace"):
+        if col_refresh.button("↻", key="refresh_files", help="Rescan workspace"):
             st.session_state[pending_key] = discover_files(ws_upload_dir)
             st.rerun()
 
-        with st.expander("⚙ Chunk settings", expanded=False):
+        with st.expander("Chunk settings", expanded=False):
             chunk_size = st.slider("Chunk size", 200, 2000, DEFAULT_CHUNK_SIZE, 50)
             chunk_overlap = st.slider("Overlap", 0, 500, DEFAULT_CHUNK_OVERLAP, 10)
             reset_db = st.checkbox("Reset DB before ingestion", value=False)
@@ -344,12 +341,12 @@ with st.sidebar:
         col_go, col_reset = st.columns(2)
         with col_go:
             start_btn = st.button(
-                "🚀 Start", key="start_pipeline",
+                "Start", key="start_pipeline",
                 use_container_width=True, type="primary",
                 disabled=len(pending_files) == 0,
             )
         with col_reset:
-            if st.button("🗑 Reset DB", key="reset_db_btn", use_container_width=True):
+            if st.button("Reset DB", key="reset_db_btn", use_container_width=True):
                 if delete_notebook(final_notebook_name):
                     st.toast(f"Qdrant collection '{final_notebook_name}' reset.")
                     time.sleep(0.4)
@@ -357,7 +354,7 @@ with st.sidebar:
 
         if start_btn:
             with st.sidebar.status("Đang xử lý pipeline...", expanded=True) as status:
-                status.write("🧹 Cleaning documents...")
+                status.write("Cleaning documents...")
                 result = run_pipeline(
                     source_dir=ws_upload_dir,
                     collection_name=final_notebook_name,
@@ -367,22 +364,22 @@ with st.sidebar:
                 )
 
                 if result.get("stage") == "done":
-                    status.update(label="✅ Pipeline hoàn tất!", state="complete", expanded=False)
+                    status.update(label="Pipeline hoàn tất!", state="complete", expanded=False)
                     st.toast(result.get("message", "Pipeline complete!"))
                     st.session_state.pop(pending_key, None)
                     time.sleep(0.5)
                     st.rerun()
                 else:
-                    status.update(label="❌ Pipeline thất bại", state="error", expanded=True)
+                    status.update(label="Pipeline thất bại", state="error", expanded=True)
                     st.error(result.get("error", "Unknown error"))
 
     with tab_files:
-        if selected_option == "➕ New workspace…":
+        if selected_option == "+ New workspace…":
             st.caption("Create a workspace first.")
         else:
             summary_path = ws_summary_dir / "summary.txt"
             if summary_path.exists():
-                with st.expander("📝 Summary", expanded=False):
+                with st.expander("Summary", expanded=False):
                     st.markdown(summary_path.read_text(encoding="utf-8"))
 
             _stats = get_notebook_stats(final_notebook_name)
@@ -402,7 +399,7 @@ with st.sidebar:
 
             recent = get_recent_questions(final_notebook_name)
             if recent:
-                with st.expander(f"🔍 Recent ({len(recent)})", expanded=False):
+                with st.expander(f"Recent ({len(recent)})", expanded=False):
                     for i, q in enumerate(recent):
                         disp = q if len(q) <= 35 else q[:35] + "…"
                         if st.button(disp, key=f"hist_{i}_{hash(q)}", use_container_width=True):
@@ -422,15 +419,15 @@ with st.sidebar:
 
         st.divider()
 
-        if st.button("🗑 Clear chat", use_container_width=True):
+        if st.button("Clear chat", use_container_width=True):
             st.session_state.messages = [
                 {"role": "assistant", "content": "Chat cleared. How can I help?"}
             ]
             delete_chat(final_notebook_name)
             st.rerun()
 
-        if selected_option != "➕ New workspace…":
-            if st.button("🗑 Delete workspace", use_container_width=True):
+        if selected_option != "+ New workspace…":
+            if st.button("Delete workspace", use_container_width=True):
                 if delete_notebook(final_notebook_name):
                     if ws_summary_dir.exists():
                         shutil.rmtree(ws_summary_dir, ignore_errors=True)
@@ -472,18 +469,17 @@ elif "messages" not in st.session_state:
     st.session_state.messages = saved if saved else list(_default_welcome)
 
 for msg in st.session_state.messages:
-    avatar = "🤖" if msg["role"] == "assistant" else "👤"
-    with st.chat_message(msg["role"], avatar=avatar):
+    with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
 prompt = st.chat_input("Send a message")
 
 if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user", avatar="👤"):
+    with st.chat_message("user"):
         st.markdown(prompt)
 
-    with st.chat_message("assistant", avatar="🤖"):
+    with st.chat_message("assistant"):
         placeholder = st.empty()
         full_response = ""
 
@@ -512,19 +508,19 @@ if prompt:
                 placeholder.markdown(full_response)
 
                 if standalone_q:
-                    st.caption(f'🔍 Interpreted as: "{standalone_q}"')
+                    st.caption(f'Interpreted as: "{standalone_q}"')
 
                 if sources:
-                    with st.expander(f"📚 Sources ({len(sources)})", expanded=False):
+                    with st.expander(f"Sources ({len(sources)})", expanded=False):
                         for i, src in enumerate(sources, 1):
                             st.markdown(f"{i}. `{src}`")
 
                 if info:
-                    with st.expander("🔬 Pipeline info", expanded=False):
+                    with st.expander("Pipeline info", expanded=False):
                         cols = st.columns(3)
                         cols[0].metric("Retrieved", info.get("total_retrieved", 0))
                         cols[1].metric("Used", info.get("final_docs", 0))
-                        cols[2].metric("Context", "✅" if info.get("contextualized") else "—")
+                        cols[2].metric("Context", "Yes" if info.get("contextualized") else "—")
 
             except Exception as e:
                 st.error(str(e))

@@ -1,4 +1,10 @@
 
+"""
+Legacy generator module - maintained for backward compatibility.
+
+For new code, use core.rag_engine directly.
+"""
+
 from __future__ import annotations
 
 import os
@@ -26,7 +32,18 @@ from config import (
 
 load_dotenv()
 
-reranker_model = CrossEncoder(RERANKER_MODEL, device=DEVICE)
+_reranker_model = None
+
+def get_reranker():
+    """Lazy load reranker."""
+    global _reranker_model
+    if _reranker_model is None:
+        _reranker_model = CrossEncoder(RERANKER_MODEL, device=DEVICE)
+        if DEVICE == "cuda":
+            _reranker_model.model.half()
+    return _reranker_model
+
+reranker_model = property(lambda self: get_reranker())
 
 
 contextualize_q_system_prompt = (
@@ -103,7 +120,6 @@ def _needs_contextualization(question: str) -> bool:
         r"\b(it|its|this|that|these|those|they|them|their|he|she|him|her)\b",
         r"\b(the same|above|previous|mentioned|said|such)\b",
         r"\b(what about|how about|and the|also the|another)\b",
-        # Vietnamese
         r"\b(nó|này|đó|ở trên|như vậy|còn|thế thì|vậy thì)\b",
         r"\b(cái này|cái đó|điều đó|vấn đề này|chúng)\b",
     ]
@@ -129,7 +145,6 @@ def query_rag_system(
     k_target: int = 10,
     user_api_key: str | None = None,
     llm_provider: str = "groq",
-    # Metadata filters (Big Data feature from EpsteinFiles-RAG)
     format_filter: str | None = None,
     source_filter: str | None = None,
 ) -> dict[str, Any]:
@@ -237,7 +252,7 @@ def query_rag_system(
 
 
     pairs = [[standalone_question, doc.page_content] for doc in all_docs]
-    rerank_scores = reranker_model.predict(pairs)
+    rerank_scores = get_reranker().predict(pairs)
 
     for i, doc in enumerate(all_docs):
         doc.metadata["rerank_score"] = float(rerank_scores[i])
@@ -246,7 +261,6 @@ def query_rag_system(
             + HYBRID_WEIGHT_BM25 * doc.metadata["bm25_score"]
         )
 
-    # Filter + sort
     filtered = [d for d in all_docs if d.metadata["hybrid_score"] >= MIN_SCORE_THRESHOLD]
     if not filtered:
         filtered = sorted(all_docs, key=lambda x: x.metadata["hybrid_score"], reverse=True)[:k_target]

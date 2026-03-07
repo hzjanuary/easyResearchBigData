@@ -125,7 +125,6 @@ def _stage_chunk(
             pipeline_status.progress = (i + 1) / total
             pipeline_status.message = f"Chunking doc {i + 1}/{total}"
 
-    # Dedup via SHA-256 (same approach as EpsteinFiles-RAG)
     seen: set[str] = set()
     unique: list[dict[str, Any]] = []
     for c in all_chunks:
