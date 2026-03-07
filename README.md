@@ -2,7 +2,7 @@
 
 > **v2.1.0** — Production-Grade AI RAG System
 
-High-performance **RAG (Retrieval-Augmented Generation)** system combining **easyResearch**'s workspace UI with **EpsteinFiles-RAG**'s big data pipeline — featuring **multi-workspace isolation**, **hybrid search**, **cross-encoder re-ranking**, and **full observability**.
+High-performance **RAG (Retrieval-Augmented Generation)** system combining **easyResearch**'s workspace UI with **EpsteinFiles-20k**'s big data pipeline — featuring **multi-workspace isolation**, **hybrid search**, **cross-encoder re-ranking**, and **full observability**.
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-green.svg)](https://fastapi.tiangolo.com)
