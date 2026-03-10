@@ -34,7 +34,7 @@ High-performance **RAG (Retrieval-Augmented Generation)** system combining **eas
 │  Ingestion Pipeline (pipeline.py)                           NEW v0.1    │
 │                                                                         │
 │  Stage 1 — Clean  (multiprocessing)                                     │
-│  Stage 2 — Enrich (LLM metadata: author, tags, summary, doc_type)  ✨   │
+│  Stage 2 — Enrich (LLM metadata: author, tags, summary, doc_type)       │
 │  Stage 3 — Chunk  (SHA-256 dedup)                                       │
 │  Stage 4 — Embed  (CUDA FP16, batch=32) → ws_{workspace} collection     │
 └───────────────────────────────────┬─────────────────────────────────────┘
@@ -55,11 +55,11 @@ High-performance **RAG (Retrieval-Augmented Generation)** system combining **eas
 │                                                                         │
 │  Question → Contextualisation                                           │
 │           → Dense Vector Search (Qdrant)                                │
-│           → BM25 Sparse Search (keyword: RPC, RMI, OSI)            ✨   │
-│           → Reciprocal Rank Fusion (RRF)                           ✨   │
-│           → Cross-Encoder Reranking (FP16, batch=8)                ✨   │
+│           → BM25 Sparse Search (keyword: RPC, RMI, OSI)                 │
+│           → Reciprocal Rank Fusion (RRF)                                │
+│           → Cross-Encoder Reranking (FP16, batch=8)                     │
 │           → Parent Document Retrieval                                   │
-│           → LLM Answer (Groq LLaMA 3.3 70B)                              │
+│           → LLM Answer (Groq LLaMA 3.3 70B)                             │
 └───────────────────────────────────┬─────────────────────────────────────┘
                                     │
                                     ▼
