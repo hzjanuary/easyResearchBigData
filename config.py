@@ -81,9 +81,7 @@ HYBRID_WEIGHT_BM25   = 0.3
 MIN_SCORE_THRESHOLD  = 0.1
 
 GROQ_API_KEY         = os.getenv("GROQ_API_KEY", "")
-GOOGLE_API_KEY       = os.getenv("GOOGLE_API_KEY", "")
 LLM_MODEL_GROQ       = "llama-3.3-70b-versatile"
-LLM_MODEL_GEMINI     = "gemini-2.5-flash"
 LLM_TEMPERATURE      = 0.2
 LLM_MAX_TOKENS       = 1024
 

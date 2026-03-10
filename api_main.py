@@ -64,7 +64,7 @@ from core.observability import (
 # Configuration & Constants
 # ──────────────────────────────────────────────────────────────────────────────
 
-API_VERSION = "2.1.0"
+API_VERSION = "0.1.0"
 API_TITLE = "easyResearch RAG API"
 API_DESCRIPTION = """
 Production-grade RAG API with hybrid search, re-ranking, and Big Data pipelines.
@@ -152,8 +152,6 @@ class AskRequest(BaseModel):
     collection_name: str = Field(default="Default_Project", description="Workspace/collection name")
     chat_history: list[dict] = Field(default_factory=list, description="Previous conversation messages")
     k_target: int = Field(default=10, ge=1, le=50, description="Number of documents to retrieve")
-    llm_provider: Literal["groq", "gemini"] = Field(default="groq", description="LLM provider")
-    api_key: str | None = Field(default=None, description="Optional user API key")
     format_filter: str | None = Field(default=None, description="Filter by document format")
     source_filter: str | None = Field(default=None, description="Filter by source filename")
 
@@ -163,7 +161,6 @@ class AskRequest(BaseModel):
                 "question": "What is RPC in distributed systems?",
                 "collection_name": "network_programming",
                 "k_target": 10,
-                "llm_provider": "groq",
             }
         }
 
@@ -358,8 +355,6 @@ async def ask_question(req: AskRequest):
             collection_name=req.collection_name,
             chat_history=req.chat_history,
             k_target=req.k_target,
-            user_api_key=req.api_key,
-            llm_provider=req.llm_provider,
             format_filter=req.format_filter,
             source_filter=req.source_filter,
             retrieval_config=config,
@@ -651,7 +646,6 @@ class BatchQueryRequest(BaseModel):
     questions: list[str] = Field(..., min_length=1, max_length=20)
     collection_name: str = Field(default="Default_Project")
     k_target: int = Field(default=5)
-    llm_provider: Literal["groq", "gemini"] = Field(default="groq")
 
 
 @app.post("/batch/query", tags=["Batch"])
@@ -670,7 +664,6 @@ async def batch_query(req: BatchQueryRequest):
                 question=question,
                 collection_name=req.collection_name,
                 k_target=req.k_target,
-                llm_provider=req.llm_provider,
             )
             results.append({
                 "index": i,

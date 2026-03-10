@@ -14,7 +14,6 @@ from typing import Any
 import torch
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage, AIMessage
 from sentence_transformers import CrossEncoder
@@ -144,39 +143,24 @@ def query_rag_system(
     chat_history: list[dict] | None = None,
     k_target: int = 10,
     user_api_key: str | None = None,
-    llm_provider: str = "groq",
     format_filter: str | None = None,
     source_filter: str | None = None,
+    **kwargs,
 ) -> dict[str, Any]:
 
-    if llm_provider == "gemini":
-        sys_key = os.getenv("GOOGLE_API_KEY")
-        key = user_api_key if user_api_key and user_api_key.strip() else sys_key
-        if not key:
-            return {"answer": "❌ Missing Google Gemini API Key.", "sources": []}
-        try:
-            llm = ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash",
-                temperature=0.2,
-                max_output_tokens=1024,
-                google_api_key=key,
-            )
-        except Exception as e:
-            return {"answer": f"❌ Gemini init error: {e}", "sources": []}
-    else:
-        sys_key = os.getenv("GROQ_API_KEY")
-        key = user_api_key if user_api_key and user_api_key.strip() else sys_key
-        if not key:
-            return {"answer": "❌ Missing Groq API Key.", "sources": []}
-        try:
-            llm = ChatGroq(
-                model="llama-3.3-70b-versatile",
-                temperature=0.2,
-                max_tokens=1024,
-                api_key=key,
-            )
-        except Exception as e:
-            return {"answer": f"❌ LLM init error: {e}", "sources": []}
+    sys_key = os.getenv("GROQ_API_KEY")
+    key = user_api_key if user_api_key and user_api_key.strip() else sys_key
+    if not key:
+        return {"answer": "❌ Missing Groq API Key.", "sources": []}
+    try:
+        llm = ChatGroq(
+            model="llama-3.3-70b-versatile",
+            temperature=0.2,
+            max_tokens=1024,
+            api_key=key,
+        )
+    except Exception as e:
+        return {"answer": f"❌ LLM init error: {e}", "sources": []}
 
 
     standalone_question = question

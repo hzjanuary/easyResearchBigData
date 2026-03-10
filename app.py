@@ -408,15 +408,9 @@ with st.sidebar:
                             st.rerun()
 
     with tab_cfg:
-        llm_provider = st.selectbox("LLM Provider", ["Groq (LLaMA 3.3 70B)", "Google Gemini"])
-        if "Groq" in llm_provider:
-            user_key = st.text_input("API Key", type="password", placeholder="gsk_…")
-            st.session_state.llm_provider = "groq"
-        else:
-            user_key = st.text_input("API Key", type="password", placeholder="AIza…")
-            st.session_state.llm_provider = "gemini"
-        st.session_state.user_api_key = user_key
-
+        st.caption("LLM: Groq LLaMA 3.3 70B")
+        st.session_state.llm_provider = "groq"
+        
         st.divider()
 
         if st.button("Clear chat", use_container_width=True):
@@ -490,8 +484,6 @@ if prompt:
                     collection_name=final_notebook_name,
                     chat_history=st.session_state.messages,
                     k_target=10,
-                    user_api_key=st.session_state.get("user_api_key", ""),
-                    llm_provider=st.session_state.get("llm_provider", "groq"),
                 )
 
                 answer = result["answer"]

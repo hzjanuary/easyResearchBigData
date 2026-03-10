@@ -38,8 +38,6 @@ class AskRequest(BaseModel):
     collection_name: str = "Default_Project"
     chat_history: list = Field(default_factory=list)
     k_target: int = 10
-    llm_provider: str = "groq"
-    api_key: str = ""
     format_filter: str | None = None
     source_filter: str | None = None
 
@@ -66,8 +64,6 @@ async def ask(req: AskRequest):
             collection_name=req.collection_name,
             chat_history=req.chat_history,
             k_target=req.k_target,
-            user_api_key=req.api_key,
-            llm_provider=req.llm_provider,
             format_filter=req.format_filter,
             source_filter=req.source_filter,
         )

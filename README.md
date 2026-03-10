@@ -1,6 +1,6 @@
 # 🧠 easyResearch for Big Data
 
-> **v2.1.0** — Production-Grade AI RAG System
+> **v0.1.0** — Production-Grade AI RAG System
 
 High-performance **RAG (Retrieval-Augmented Generation)** system combining **easyResearch**'s workspace UI with **EpsteinFiles-20k**'s big data pipeline — featuring **multi-workspace isolation**, **hybrid search**, **cross-encoder re-ranking**, and **full observability**.
 
@@ -12,7 +12,7 @@ High-performance **RAG (Retrieval-Augmented Generation)** system combining **eas
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          PRODUCTION RAG SYSTEM v2.1                         │
+│                          PRODUCTION RAG SYSTEM v0.1                         │
 └─────────────────────────────────────────────────────────────────────────────┘
 
                      ┌──────────────────────────────────────┐
@@ -31,7 +31,7 @@ High-performance **RAG (Retrieval-Augmented Generation)** system combining **eas
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  Ingestion Pipeline (pipeline.py)                           NEW v2.1    │
+│  Ingestion Pipeline (pipeline.py)                           NEW v0.1    │
 │                                                                         │
 │  Stage 1 — Clean  (multiprocessing)                                     │
 │  Stage 2 — Enrich (LLM metadata: author, tags, summary, doc_type)  ✨   │
@@ -51,7 +51,7 @@ High-performance **RAG (Retrieval-Augmented Generation)** system combining **eas
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  Hybrid Search Pipeline (rag_engine.py)                     NEW v2.1    │
+│  Hybrid Search Pipeline (rag_engine.py)                     NEW v0.1    │
 │                                                                         │
 │  Question → Contextualisation                                           │
 │           → Dense Vector Search (Qdrant)                                │
@@ -59,12 +59,12 @@ High-performance **RAG (Retrieval-Augmented Generation)** system combining **eas
 │           → Reciprocal Rank Fusion (RRF)                           ✨   │
 │           → Cross-Encoder Reranking (FP16, batch=8)                ✨   │
 │           → Parent Document Retrieval                                   │
-│           → LLM Answer (Groq/Gemini)                                    │
+│           → LLM Answer (Groq LLaMA 3.3 70B)                              │
 └───────────────────────────────────┬─────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  Observability Layer (observability.py)                     NEW v2.1    │
+│  Observability Layer (observability.py)                     NEW v0.1    │
 │                                                                         │
 │  • Full pipeline tracing (trace_id, timing, scores)                     │
 │  • RAG Metrics: Hit Rate, MRR, P50/P95/P99 latency                      │
@@ -81,18 +81,18 @@ High-performance **RAG (Retrieval-Augmented Generation)** system combining **eas
 - **Cross-Encoder Re-ranking** — `ms-marco-MiniLM-L-6-v2` optimized for RTX 3050 (FP16, batch=8)
 - **Parent Document Retrieval** — small child chunks (400 chars) for search, large parent chunks (2000 chars) for LLM context
 
-### Production Pipeline (v2.1) ✨
+### Production Pipeline (v0.1) ✨
 - **Metadata Enrichment** — LLM extracts `author`, `topic_tags`, `summary`, `document_type`, `language`, `technical_level`
 - **Filtered Retrieval** — query by format, source, or topic tags stored in Qdrant payload
 - **CUDA Optimization** — FP16 embeddings, batch processing with memory management for 4GB VRAM
 - **Big Data Pipeline** — parallel cleaning & chunking via `ProcessPoolExecutor`
 
-### Observability (v2.1) ✨
+### Observability (v0.1) ✨
 - **Full Tracing** — Query → Retrieval → Re-ranking → Generation with timing
 - **RAG Metrics** — Hit Rate, MRR, P50/P95/P99 latency
 - **JSONL Logs** — `logs/rag_traces.jsonl` for analysis
 
-### API & Resilience (v2.1) ✨
+### API & Resilience (v0.1) ✨
 - **FastAPI Backend** — OpenAPI docs at `/docs`
 - **Qdrant Retry** — Exponential backoff for connection errors
 - **Groq Rate Limiting** — Automatic retry with backoff
@@ -101,7 +101,7 @@ High-performance **RAG (Retrieval-Augmented Generation)** system combining **eas
 ### Other Features
 - **Qdrant Vector Database** — production-ready vector store running on Docker
 - **Multilingual** — `paraphrase-multilingual-MiniLM-L12-v2` (384 dim, Vietnamese + English)
-- **Dual LLM** — Groq (LLaMA 3.3 70B) / Google Gemini 2.5 Flash
+- **LLM** — Groq LLaMA 3.3 70B Versatile
 - **Dataset Download** — import from HuggingFace Hub or Kaggle
 - **Smart Contextualisation** — detects pronouns/follow-up patterns and reformulates questions
 - **Dark Theme UI** — AnythingLLM-inspired zinc dark theme in Streamlit
@@ -116,13 +116,13 @@ High-performance **RAG (Retrieval-Augmented Generation)** system combining **eas
 | Embedding     | sentence-transformers (MiniLM-L12-v2, 384 dim)           |
 | Reranker      | cross-encoder (ms-marco-MiniLM-L-6-v2)                   |
 | BM25          | rank-bm25                                                |
-| LLM           | Groq (LLaMA 3.3 70B Versatile) / Google Gemini 2.5 Flash |
+| LLM           | Groq (LLaMA 3.3 70B Versatile)                           |
 | Framework     | LangChain + langchain-qdrant                             |
 | GPU           | PyTorch CUDA 12.6                                        |
 | Observability | Custom tracing + JSONL logs ✨                           |
 | Resilience    | tenacity (retry with backoff) ✨                         |
 
-## Usage Examples (v2.1)
+## Usage Examples (v0.1)
 
 ### Using the New RAG Engine
 
@@ -143,7 +143,6 @@ result = query_rag(
     collection_name="network_programming",
     chat_history=[],
     k_target=10,
-    llm_provider="groq",
     retrieval_config=config
 )
 
@@ -197,10 +196,10 @@ for trace in traces:
 easyResearchforBigData/
 ├── app.py                    # Streamlit UI
 ├── main.py                   # Legacy FastAPI (backward compat)
-├── api_main.py               # ✨ Production FastAPI v2.1 (use this)
+├── api_main.py               # ✨ Production FastAPI v0.1 (use this)
 ├── config.py                 # Central configuration + Config class
 ├── requirements.txt
-├── .env                      # API keys (GROQ_API_KEY, GOOGLE_API_KEY)
+├── .env                      # API keys (GROQ_API_KEY)
 ├── .gitignore
 ├── core/
 │   ├── __init__.py           # ✨ Module exports
@@ -295,7 +294,6 @@ Create a `.env` file:
 
 ```env
 GROQ_API_KEY=gsk_...
-GOOGLE_API_KEY=AIza...
 
 # Optional Qdrant settings (defaults shown)
 QDRANT_HOST=localhost
@@ -310,7 +308,7 @@ QDRANT_PORT=6333
 streamlit run app.py
 ```
 
-**FastAPI v2.1 (Production):**
+**FastAPI v0.1 (Production):**
 
 ```bash
 uvicorn api_main:app --host 0.0.0.0 --port 8000 --reload
@@ -379,9 +377,8 @@ uvicorn main:app --reload
 | `HYBRID_WEIGHT_BM25`    | 0.3                                   | BM25 keyword weight               |
 | `MAX_WORKERS`           | cpu_count - 2                         | Parallel cleaning/chunking        |
 | `LLM_MODEL_GROQ`        | llama-3.3-70b-versatile               | Groq model ID                     |
-| `LLM_MODEL_GEMINI`      | gemini-2.5-flash                      | Gemini model ID                   |
 
-### RetrievalConfig (v2.1) ✨
+### RetrievalConfig (v0.1) ✨
 
 ```python
 from core.rag_engine import RetrievalConfig
@@ -399,7 +396,7 @@ config = RetrievalConfig(
 )
 ```
 
-### PipelineConfig (v2.1) ✨
+### PipelineConfig (v0.1) ✨
 
 ```python
 from core.pipeline import PipelineConfig
@@ -434,7 +431,7 @@ config = PipelineConfig(
 - **Storage:** Depends on dataset size
 - **Docker:** Required for Qdrant
 
-### GPU Memory Optimization (v2.1)
+### GPU Memory Optimization (v0.1)
 
 The system is specifically optimized for RTX 3050 with 4GB VRAM:
 
@@ -453,5 +450,5 @@ MIT License - See [LICENSE](LICENSE) file for more details.
 
 <p align="center">
   Made with ❤️ by easyResearch<br>
-  <sub>v2.1.0 — Production-Grade RAG System</sub>
+  <sub>v0.1.0 — Production-Grade RAG System</sub>
 </p>

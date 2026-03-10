@@ -22,7 +22,6 @@ from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
-from langchain_google_genai import ChatGoogleGenerativeAI
 from rank_bm25 import BM25Okapi
 from sentence_transformers import CrossEncoder
 
@@ -36,7 +35,6 @@ from config import (
     HYBRID_WEIGHT_BM25,
     MIN_SCORE_THRESHOLD,
     LLM_MODEL_GROQ,
-    LLM_MODEL_GEMINI,
     LLM_TEMPERATURE,
     LLM_MAX_TOKENS,
 )
@@ -395,40 +393,27 @@ def _summarize_conversation(chat_history: list[dict], max_messages: int = 5) -> 
 
 
 def _get_llm(
-    provider: Literal["groq", "gemini"],
     api_key: str | None = None,
-) -> ChatGroq | ChatGoogleGenerativeAI:
+) -> ChatGroq:
     """Get configured LLM instance with error handling."""
     
-    if provider == "gemini":
-        key = api_key or os.getenv("GOOGLE_API_KEY")
-        if not key:
-            raise ValueError("Google Gemini API key required")
-        
-        return ChatGoogleGenerativeAI(
-            model=LLM_MODEL_GEMINI,
-            temperature=LLM_TEMPERATURE,
-            max_output_tokens=LLM_MAX_TOKENS,
-            google_api_key=key,
-        )
-    else:
-        key = api_key or os.getenv("GROQ_API_KEY")
-        if not key:
-            raise ValueError("Groq API key required")
-        
-        from pydantic import SecretStr
-        return ChatGroq(
-            model=LLM_MODEL_GROQ,
-            temperature=LLM_TEMPERATURE,
-            max_tokens=LLM_MAX_TOKENS,
-            api_key=SecretStr(key),
-        )
+    key = api_key or os.getenv("GROQ_API_KEY")
+    if not key:
+        raise ValueError("Groq API key required")
+    
+    from pydantic import SecretStr
+    return ChatGroq(
+        model=LLM_MODEL_GROQ,
+        temperature=LLM_TEMPERATURE,
+        max_tokens=LLM_MAX_TOKENS,
+        api_key=SecretStr(key),
+    )
 
 
 def contextualize_query(
     question: str,
     chat_history: list[dict],
-    llm: ChatGroq | ChatGoogleGenerativeAI,
+    llm: ChatGroq,
 ) -> str:
     """Reformulate question to be standalone using chat history."""
     
@@ -471,10 +456,10 @@ def query_rag(
     chat_history: list[dict] | None = None,
     k_target: int = 10,
     user_api_key: str | None = None,
-    llm_provider: Literal["groq", "gemini"] = "groq",
     format_filter: str | None = None,
     source_filter: str | None = None,
     retrieval_config: RetrievalConfig | None = None,
+    **kwargs,
 ) -> dict[str, Any]:
     """
     Execute RAG query with hybrid search and full observability.
@@ -485,7 +470,6 @@ def query_rag(
         chat_history: Previous conversation messages
         k_target: Target number of documents to retrieve
         user_api_key: Optional user-provided API key
-        llm_provider: LLM provider ("groq" or "gemini")
         format_filter: Filter by document format (e.g., "pdf")
         source_filter: Filter by source filename
         retrieval_config: Custom retrieval configuration
@@ -506,8 +490,8 @@ def query_rag(
     with RAGTracer(workspace=collection_name, query=question) as tracer:
         try:
             # Initialize LLM
-            llm = _get_llm(llm_provider, user_api_key)
-            model_name = LLM_MODEL_GEMINI if llm_provider == "gemini" else LLM_MODEL_GROQ
+            llm = _get_llm(user_api_key)
+            model_name = LLM_MODEL_GROQ
             
             # Contextualize query if needed
             with tracer.stage("contextualization"):
@@ -576,7 +560,7 @@ def query_rag(
             # Log generation details
             tracer.log_generation(
                 context_length=len(context_text),
-                llm_provider=llm_provider,
+                llm_provider="groq",
                 llm_model=model_name,
                 response_length=len(answer_text),
                 sources=source_names,
